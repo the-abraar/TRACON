@@ -8,7 +8,7 @@
   "scripts": {
     "start": "npm run build -w tracon-ui && node packages/tracon-cli/bin/tracon.js start",
     "dev:ui": "npm run dev -w tracon-ui",
-    "test": "node --test 'packages/avalokita-engine/test/*.test.ts' 'packages/tracon-ui/test/*.test.ts'",
+    "test": "node --test 'packages/avalokita-engine/test/*.test.ts' 'packages/tracon-ui/test/*.test.ts' 'packages/tracon-cli/test/*.test.js'",
     "lint": "tsc --noEmit -p packages/avalokita-engine && tsc --noEmit -p packages/tracon-ui"
   },
   "engines": {

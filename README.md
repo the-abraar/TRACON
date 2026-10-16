@@ -22,6 +22,22 @@
 
 ---
 
+## ⬇️ Download (macOS, no Node or git needed)
+
+**[Download the latest beta (beta_0.1)](https://github.com/the-abraar/TRACON/releases/tag/beta_0.1)**: pick `tracon-macos-arm64.zip` for Apple Silicon (M1 and newer) or `tracon-macos-x64.zip` for Intel Macs. It is one self-contained file with the Flight Deck inside.
+
+Easiest, in Terminal (downloads, unzips and runs it):
+
+```bash
+curl -L "https://github.com/the-abraar/TRACON/releases/download/beta_0.1/tracon-macos-$(uname -m | sed s/x86_64/x64/).zip" -o tracon.zip && unzip -o tracon.zip && ./tracon
+```
+
+Downloaded in a browser instead? The build is not notarized by Apple, so macOS will say it can't verify it. Run `xattr -d com.apple.quarantine tracon` once in the unzipped folder, then `./tracon`.
+
+`./tracon` opens the live radar right in your terminal (↑/↓ pick a flight, Enter shows its trace, `w` opens the browser Flight Deck, `q` quits). `./tracon start` runs the browser Flight Deck instead; `./tracon status` prints a one-shot snapshot. Beta: macOS only, Windows is untested.
+
+---
+
 ## 🧭 Overview
 
 **TRACON ATC** (short name: **Tracon**) is an ambient developer mission control system that transforms the chaotic, invisible execution of local AI coding agents into an intuitive, real-time radar control room.
@@ -104,7 +120,7 @@ Tracon features a dual-mode presentation layer suited for both deep technical an
 
 ## 🏗️ Technical Architecture
 
-Target architecture. Built today: scanner, tailer, normalizer, WebSocket/REST server, the fleet cards, the execution DAG, the holding alerter, the TCAS collision detector (`collision.ts`) and the quota reader (`quota.ts`). Not built: burn-rate forecasting and the Ops Lounge. Layout: `packages/avalokita-engine` (engine), `packages/tracon-ui` (Flight Deck), `packages/tracon-cli` (`tracon start | status`).
+Target architecture. Built today: scanner, tailer, normalizer, WebSocket/REST server, the fleet cards, the execution DAG, the holding alerter, the TCAS collision detector (`collision.ts`) and the quota reader (`quota.ts`). Not built: burn-rate forecasting and the Ops Lounge. Layout: `packages/avalokita-engine` (engine), `packages/tracon-ui` (Flight Deck), `packages/tracon-cli` (`tracon [tui] | start | status`).
 
 ```mermaid
 flowchart TD
@@ -165,7 +181,9 @@ Needs Node.js 23.6 or newer (the engine is TypeScript run by Node's type strippi
 ```bash
 npm ci
 npm start                                      # builds the UI, starts the engine on 127.0.0.1:4040, opens the Flight Deck
+node packages/tracon-cli/bin/tracon.js         # terminal Flight Deck (TUI); reuses a running engine, else starts one
 node packages/tracon-cli/bin/tracon.js status  # terminal snapshot from a running engine
+scripts/build-binary.sh                        # standalone macOS binaries into release/ (needs bun)
 scripts/check.sh                               # typecheck, read-only guard, tests, UI build (--fast: skip tests and build)
 ```
 

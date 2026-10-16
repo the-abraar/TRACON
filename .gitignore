@@ -34,3 +34,6 @@ Thumbs.db
 .turbo/
 coverage/
 .cache/
+
+# Compiled binaries (scripts/build-binary.sh)
+release/

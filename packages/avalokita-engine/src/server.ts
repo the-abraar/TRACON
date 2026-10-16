@@ -24,6 +24,8 @@ export interface EngineOptions {
   tiers?: string;
   quota?: string;
   uiDist?: string;
+  /** URL path -> readable file, replaces uiDist; the compiled binary uses it to serve the UI it embeds */
+  uiFiles?: Record<string, string>;
   /** read for CLAUDE_CONFIG_DIR, TRACON_WINDOW_MIN, TRACON_TIERS, TRACON_QUOTA */
   env?: NodeJS.ProcessEnv;
 }
@@ -56,8 +58,8 @@ export async function startEngine(opts: EngineOptions = {}) {
       res.writeHead(nodes ? 200 : 404, { "content-type": "application/json" }).end(JSON.stringify(nodes ? { nodes } : { error: "unknown flight" }));
       return;
     }
-    let file = resolve(uiDist, "." + path);
-    if (!file.startsWith(uiDist + sep) || !existsSync(file) || statSync(file).isDirectory()) file = join(uiDist, "index.html");
+    let file = opts.uiFiles ? (opts.uiFiles[path] ?? opts.uiFiles["/index.html"]) : resolve(uiDist, "." + path);
+    if (!opts.uiFiles && (!file.startsWith(uiDist + sep) || !existsSync(file) || statSync(file).isDirectory())) file = join(uiDist, "index.html");
     if (!existsSync(file)) {
       res.writeHead(503, { "content-type": "text/plain" }).end("Flight Deck not built. Run: npm run build -w tracon-ui\n");
       return;
