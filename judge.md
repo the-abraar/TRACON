@@ -58,4 +58,15 @@ Built and judged 2026-10-16. I read PLAN.md, findings.md, README.md and combo_of
 2. Owner: decide the tier for each profile (`TRACON_TIERS`), and add a usage-mirror status line to the profiles you want quota for (only `hat` has one).
 3. p4_2 burn-rate forecasting: with quota readings over time, project when the 5-hour window runs out.
 4. Phase 3 Ops Lounge (PixiJS), once the radar deck has been used for a while.
+5. Plan: share current usage and quota for every account.
+   - Source: each profile's status line writes a usage mirror (`statusline-usage.py` format). Today only `hat` does, so first add the mirror to `~/.claude`, `-work`, `-biz`, `-grr` and list them all in `TRACON_QUOTA`. agy has no quota source; show `n/a`.
+   - Engine: extend `quota.ts` to return both the 5-hour and 7-day percentages, their reset times and the `Updated` age, not just the 5-hour percentage. Add `GET /api/usage` returning one row per account: `{profile, tier, fivehPct, sevenDPct, resets, updatedAt, stale}`. A reading older than 10 minutes is marked `stale`, never shown as current.
+   - Share: `tracon usage` prints the same table (one line per account), and the Fleet Bar shows both gauges per account. Read-only, localhost only, like the rest of the engine.
+   - Done when: all accounts with a mirror show live 5h and 7d numbers, a stopped account shows `stale`, and a test covers the stale and reset cases.
+6. Plan: macOS widget for usage and quota.
+   - Shape: a WidgetKit widget (small = worst account's 5h percentage; medium = one row per account with 5h and 7d bars and the reset time), in a small SwiftUI host app. Swift precedent: `products/Caffeinate-my-mac`.
+   - Data: the widget's timeline provider fetches `http://127.0.0.1:4040/api/usage` (needs the network-client entitlement), refreshing every 5 minutes. If the engine is not running, show the last reading greyed out with its age.
+   - Owner decision: a WidgetKit widget needs a signed app (free Apple ID is enough for local use). The fallback is a SwiftUI menu bar item with the same data and no signing, if signing is a hassle.
+   - Depends on item 5. Build order: item 5, then the host app and a small widget, then the medium one.
+   - Done when: the widget shows the same numbers as `tracon usage` and goes stale-grey when the engine stops.
 
