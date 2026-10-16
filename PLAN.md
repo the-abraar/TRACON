@@ -155,7 +155,7 @@ gantt
 ## 6. Directory Scaffolding Plan
 
 ```
-agentviz/
+TRACON/
 ├── README.md                      # Official Tracon Documentation
 ├── findings.md                    # Research benchmark & synthesis
 ├── package.json                   # Root workspace manifest

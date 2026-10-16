@@ -1,4 +1,4 @@
-# AgentViz: Research Findings & Architectural Brainstorm
+# TRACON: Research Findings & Architectural Brainstorm
 
 ## Executive Summary
 
@@ -8,7 +8,7 @@ As AI-assisted software development transitions from single-turn chat prompts to
 - Leaving agents idle for minutes or hours because a confirmation prompt (`[y/n]` or permission request) went unnoticed.
 - Juggling multiple accounts (e.g., separate $20 Pro vs $100 Team accounts via aliases `claude-a`, `claude-b`, `claude-c`) and multiple runtimes (Claude Code, Google Antigravity `agy`, OpenCode) across different terminal windows with no unified overview.
 
-**AgentViz** is designed to bridge this observability gap by uniting the best ideas from existing visualizers into a **single, ambient Mission Control** running locally on your machine.
+**TRACON** is designed to bridge this observability gap by uniting the best ideas from existing visualizers into a **single, ambient Mission Control** running locally on your machine.
 
 ---
 
@@ -100,12 +100,12 @@ Google Antigravity (`agy`) maintains its own isolated workspace and data directo
 - **Task Management**: Spawns background tasks (`task-XX`) with live log streams in `.system_generated/tasks/`.
 - **Specialized Subagents**: Spawns subagents with distinct roles (e.g., `research`, `firestore-rules-author`, `flutter_a11y_agent`).
 
-### 2.3 The Core Opportunity for AgentViz
-AgentViz will act as a **universal aggregator** that scans the entire system for any active Claude profile (`~/.claude*`, environment variables, running processes) AND any active Antigravity session (`~/.gemini/antigravity-cli/brain/`), normalizing all events into a unified stream.
+### 2.3 The Core Opportunity for TRACON
+TRACON will act as a **universal aggregator** that scans the entire system for any active Claude profile (`~/.claude*`, environment variables, running processes) AND any active Antigravity session (`~/.gemini/antigravity-cli/brain/`), normalizing all events into a unified stream.
 
 ---
 
-## 3. AgentViz Product Architecture
+## 3. TRACON Product Architecture
 
 ### 3.1 Architectural Flow
 
@@ -121,7 +121,7 @@ AgentViz will act as a **universal aggregator** that scans the entire system for
               |                      |                         |
               v                      v                         v
 +-------------------------------------------------------------------------------+
-|                      AGENTVIZ LOCAL INGESTION DAEMON                          |
+|                       TRACON LOCAL INGESTION DAEMON                           |
 |                                                                               |
 |   - Auto-Discovery: Scans PIDs, ~/.claude*, CLAUDE_CONFIG_DIR, agy brain     |
 |   - Low-overhead FSEvents / inotify file tailers                              |
@@ -131,7 +131,7 @@ AgentViz will act as a **universal aggregator** that scans the entire system for
                                         | WebSocket stream
                                         v
 +-------------------------------------------------------------------------------+
-|                        AGENTVIZ PRESENTATION LAYER                            |
+|                         TRACON PRESENTATION LAYER                             |
 |                                                                               |
 |  +------------------------------+   +--------------------------------------+  |
 |  |     VIEW 1: VIRTUAL OFFICE   |   |        VIEW 2: WAR ROOM (DAG)        |  |
@@ -153,7 +153,7 @@ AgentViz will act as a **universal aggregator** that scans the entire system for
 ## 4. Feature Synthesis: What to Build
 
 ### Feature 1: Fleet & Multi-Account Radar
-- **Automatic Multi-Dir Discovery**: Automatically glob-watches `~/.claude*` and `~/.gemini/antigravity-cli/brain/`. Whenever you launch `claude-a` or `agy`, AgentViz automatically binds to the new session.
+- **Automatic Multi-Dir Discovery**: Automatically glob-watches `~/.claude*` and `~/.gemini/antigravity-cli/brain/`. Whenever you launch `claude-a` or `agy`, TRACON automatically binds to the new session.
 - **Account Badging & Quota Tracking**:
   - Badges each agent with its identity (e.g. `claude-a [Pro $20]`, `claude-b [Team $100]`, `agy [Gemini 3.8]`).
   - Estimates context window consumption and session token velocity.
