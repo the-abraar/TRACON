@@ -15,7 +15,7 @@
 *Powered by the **Avalokita Telemetry Engine** — The Thousand-Eyed Observer.*
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Status: Concept & Specification](https://img.shields.io/badge/Status-Active_Design-emerald.svg)]()
+[![Status: Phase 2](https://img.shields.io/badge/Status-Phase_2_(engine_%2B_radar_deck)-yellow.svg)](judge.md)
 [![Platform: macOS / Linux](https://img.shields.io/badge/Platform-macOS%20%7C%20Linux-black.svg)]()
 
 </div>
@@ -55,10 +55,11 @@ At the core of Tracon sits the **Avalokita Engine**, named after *Avalokiteśvar
  (~/.claude*, custom dirs)        (~/.gemini/antigravity-cli)       (PIDs, FSEvents)
 ```
 
-The Avalokita Engine is a zero-latency, zero-overhead background daemon that:
-1. **Never Blinks**: Continuously monitors all active agent log streams (`*.jsonl`), file modifications, and process IDs without requiring changes to your CLI tools or wrapping binaries.
-2. **Normalizes Swarm Trajectories**: Converts heterogeneous events from Claude Code, Codex, and Antigravity into a unified, high-frequency telemetry stream.
-3. **Broadcasts Real-Time Telemetry**: Emits normalized flight packets over local WebSocket channels (`ws://localhost:4040`) with sub-millisecond dispatch.
+The Avalokita Engine is a small read-only background process that:
+1. **Watches**: Tails every Claude Code profile's session transcripts (`~/.claude*/projects/**/*.jsonl`), Claude Code's live-session pid files, and Antigravity brain transcripts, through FSEvents plus a 2-second poll. It never writes to those directories and needs no changes to your CLI tools.
+2. **Normalizes**: Converts Claude Code and Antigravity events into one `FlightPacket` per session (schema in PLAN.md section 3.3).
+3. **Broadcasts**: Pushes the whole airspace as `{"flights": FlightPacket[]}` over `ws://127.0.0.1:4040/ws` whenever it changes, and serves the same snapshot at `GET /api/flights`.
+4. **Traces**: Keeps a bounded execution DAG per flight (the last 40 turns, up to 100 tool calls each) and serves it on demand at `GET /api/trace?flight=<callsign>` as `{"nodes": TraceNode[]}` (schema in `packages/avalokita-engine/src/types.ts`).
 
 ---
 
@@ -79,7 +80,9 @@ Tracon maps the chaos of multi-agent development directly to airport radar opera
 
 ---
 
-## 🎛️ Dual-Interface Experience
+## 🎛️ Dual-Interface Experience (planned)
+
+Built today: the fleet radar (one live card per session), the per-flight Execution DAG with latency and token badges, and Holding Pattern alerts (chime plus system notification). The File Attention Heatmap, Branch Cost diffs, the Ops Lounge and the Bingo Fuel / TCAS warnings below are not built yet (see [judge.md](judge.md)).
 
 Tracon features a dual-mode presentation layer suited for both deep technical analysis and ambient side-monitor awareness:
 
@@ -100,6 +103,8 @@ Tracon features a dual-mode presentation layer suited for both deep technical an
 ---
 
 ## 🏗️ Technical Architecture
+
+Target architecture. Built today: scanner, tailer, normalizer, WebSocket/REST server, the fleet cards, the execution DAG and the holding alerter. Not built: TCAS collision detector, quota calculator and the Ops Lounge. Layout: `packages/avalokita-engine` (engine), `packages/tracon-ui` (Flight Deck), `packages/tracon-cli` (`tracon start | status`).
 
 ```mermaid
 flowchart TD
@@ -153,36 +158,42 @@ flowchart TD
 
 ---
 
-## ⚡ Quick Start (Planned CLI)
+## ⚡ Quick Start
+
+Needs Node.js 23.6 or newer (the engine is TypeScript run by Node's type stripping). Not published to npm or Homebrew; run it from the repo.
 
 ```bash
-# Install Tracon globally
-npm install -g tracon-atc
-# or via homebrew
-brew install tracon-atc
-
-# Launch the Avalokita Engine and open the Flight Deck
-tracon start
-
-# Check active flights in terminal (TUI snapshot)
-tracon status
+npm ci
+npm start                                      # builds the UI, starts the engine on 127.0.0.1:4040, opens the Flight Deck
+node packages/tracon-cli/bin/tracon.js status  # terminal snapshot from a running engine
+scripts/check.sh                               # typecheck, read-only guard, tests, UI build (--fast: skip tests and build)
 ```
 
-### Example Terminal Status Output (`tracon status`)
+`npm start` keeps running in the foreground; stop it with Ctrl-C. `tracon start --no-open` skips opening the browser.
+
+### Using the Flight Deck
+
+- **Fleet bar**: flights on the radar, how many are airborne or holding, and the total burn rate.
+- **Flight cards**: one per session active in the last 30 minutes (or with a live pid): callsign, squawk (plan), state, the tool in flight, subagents, burn rate and token totals. A holding flight pulses amber.
+- **VIEW DAG**: opens that flight's execution DAG above the cards. Each turn is a column (turns chain left to right); its tool calls hang below in order, parallel calls fan out from the same parent, and Claude subagents hang off the `Agent`/`Task` call that spawned them. Badges show latency (or `running`) and tokens per turn and subagent. Pan, zoom and the minimap reach older turns; hover a node for its full path or command. The DAG refreshes whenever the engine sends a new packet for that flight.
+- **ALERTS**: off by default. Click it once to allow the chime and notifications (the browser asks for notification permission). From then on, a flight that enters holding plays a two-tone chime and shows a system notification, at most once per flight every 2 minutes. The tab title always shows the holding count, e.g. `(1) HOLDING · TRACON ATC`. Alerts need the Flight Deck tab open (it can be in the background); after a reload, the chime starts working again on your first click on the page.
+
+Optional environment variables:
+- `TRACON_TIERS="BIZ=team_100,WORK=api_usage"`: the plan behind each Claude profile (suffix of `~/.claude-<suffix>`; `""` is `~/.claude`). Unlisted profiles show as `pro_20`.
+- `TRACON_WINDOW_MIN=30`: how long after its last transcript line a session stays on the radar.
+- `TRACON_PORT=4040` (also read by `tracon status`), and `CLAUDE_CONFIG_DIR` (also scanned).
+
+For UI work, `npm run dev:ui` serves the deck through Vite and proxies to a running engine.
+
+### Example Terminal Status Output (`tracon status`, illustrative values)
 
 ```
-========================= TRACON ATC RADAR ACTIVE =========================
-AIRSPACE: /Users/blackbird/Everything/dev/labs/TRACON
-ACTIVE FLIGHTS: 3 | HOLDING: 1 | BINGO FUEL WARNINGS: 0
----------------------------------------------------------------------------
-SQUAWK   CALLSIGN   RUNTIME    STATE       CURRENT TOOL        BURN (TOKENS)
----------------------------------------------------------------------------
-SQ-20    CL-A       claude-a   ACTIVE      replace_file_content 42.1k (48%)
-SQ-100   CL-B       claude-b   HOLDING ⚠️  waiting_user_input   18.4k (18%)
-SQ-AGY   AGY-01     agy        ACTIVE      invoke_subagent(res) 89.2k (31%)
----------------------------------------------------------------------------
-HOLDING ALERT: Flight CL-B is waiting for bash command approval in tty3.
-===========================================================================
+TRACON ATC | FLIGHTS: 3 | HOLDING: 1
+SQUAWK   CALLSIGN         RUNTIME      STATE           CURRENT TOOL               TOKENS (BURN/MIN)
+SQ-100   CL-BIZ-CF5A      claude-code  TOOL_EXECUTING  Bash                       60.6k (11.8k)
+SQ-20    CL-GRR-0F3E      claude-code  HOLDING         Edit                       36.2k (407)
+SQ-AGY   AGY-37AC         antigravity  LANDED          -                          89.2k (0)
+HOLDING: CL-GRR-0F3E in /Users/you/project is waiting on you.
 ```
 
 ---
@@ -190,14 +201,14 @@ HOLDING ALERT: Flight CL-B is waiting for bash command approval in tty3.
 ## 🗺️ Project Roadmap
 
 - [x] **Phase 0: Research & Synthesis** — Benchmark against existing visualizers (`agent-flow`, `pixel-agents`, `aiwatch`, `Session-Character-Visualizer`, `mcpmarket`).
-- [ ] **Phase 1: Avalokita Engine MVP**
-  - [ ] Multi-account directory scanner (`~/.claude*`, custom config paths).
-  - [ ] Antigravity brain transcript reader (`~/.gemini/antigravity-cli/brain/`).
-  - [ ] Unified WebSocket telemetry server (`ws://localhost:4040`).
-- [ ] **Phase 2: The Tactical Radar Deck (Web UI)**
-  - [ ] Live session cards with account badges and quota burn meters.
-  - [ ] Interactive execution DAG using `@xyflow/react`.
-  - [ ] Instant Holding Pattern alerts (sound chime + macOS notification).
+- [x] **Phase 1: Avalokita Engine MVP**
+  - [x] Multi-account directory scanner (`~/.claude*`, `CLAUDE_CONFIG_DIR`).
+  - [x] Antigravity brain transcript reader (`~/.gemini/antigravity-cli/brain/`).
+  - [x] Unified WebSocket telemetry server (`ws://127.0.0.1:4040/ws`).
+- [x] **Phase 2: The Tactical Radar Deck (Web UI)**
+  - [x] Live session cards with account badges and burn meters (quota gauge shows `n/a`: no quota source yet).
+  - [x] Interactive execution DAG using `@xyflow/react` (turns, tools, subagents; latency and token badges).
+  - [x] Instant Holding Pattern alerts (WebAudio chime + browser notification, which macOS shows in Notification Center).
 - [ ] **Phase 3: The Ops Lounge (Pixel Office)**
   - [ ] PixiJS-powered 16-bit retro radar room.
   - [ ] Real-time character animations matching active tools (reading, writing, shell).

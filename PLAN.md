@@ -183,3 +183,35 @@ agentviz/
 │       ├── bin/tracon.js
 │       └── package.json
 ```
+
+---
+
+## 7. Decisions (MVP build, 2026-10-16)
+
+Choices the plan left open, and where findings.md or the real data on this machine overrode it.
+
+**Status (2026-10-16):** built and verified: Phase 1 (p1_1 to p1_3) and Phase 2 (p2_1 Fleet Bar & Quota Gauges, p2_2 Interactive DAG, p2_3 Smart Alerter). Not built: Phase 3 (p3_1, p3_2 Ops Lounge), Phase 4 (p4_1 TCAS, p4_2 burn-rate forecasting), and the File Attention Heatmap from section 4 (no milestone in section 5). `collision.ts` from section 6 belongs to p4_1 and does not exist yet.
+
+| Topic | Decision | Why |
+|---|---|---|
+| Engine runtime | Node.js TypeScript run directly by Node's type stripping (Node >= 23.6), no build step | findings.md allows Node or Go; this needs no compiler output and keeps `.ts` files as in section 6 |
+| File watching | `fs.watch(recursive)` (FSEvents on macOS) plus a 2 s poll | No chokidar dependency. The poll finds new profiles and moves time-based states (holding, leaving the window) |
+| Claude transcript path | `<profile>/projects/<project>/<sessionId>.jsonl`; subagents in `<sessionId>/subagents/agent-*.jsonl` (+ `.meta.json` for the role) | findings.md's `transcript*.jsonl` glob does not match Claude Code's real file names |
+| agy transcript path | `brain/<conv>/.system_generated/logs/transcript.jsonl`, falling back to the documented `brain/<conv>/transcript.jsonl` | That is where the installed `agy` writes it. `transcript_full.jsonl` is not read (the compact one has every field used) |
+| PID / live state | Claude Code's `<profile>/sessions/<pid>.json` (fields `pid`, `sessionId`, `status` only; `*.key` files are never opened). Dead pid = `aborted`, `idle` = `landed`, `busy` after the turn = `cruising` | The only live process signal on disk; no `ps` scraping |
+| Holding detection | `AskUserQuestion`/`ExitPlanMode` pending, a live status containing wait/input/permission, an agy `WAIT*` status, or any tool call with no result and no new transcript line for 60 s | Transcripts have no "awaiting approval" entry. A long build also shows as holding after 60 s |
+| Fuel | input = `input_tokens + cache_creation_input_tokens`; cache reads excluded; one API response counted once (keyed by message id); burn = tokens in the last 5 min / 5 | Cache reads re-count the whole context every turn and would swamp the gauge |
+| `accountTier` | `TRACON_TIERS="BIZ=team_100,WORK=api_usage"` (profile suffix, `""` = `~/.claude`); unlisted Claude profiles are `pro_20`, agy is `gemini` | Plan tiers are not recorded anywhere on disk |
+| `quotaPercentage` | Left unset; the gauge shows `n/a` | No quota source yet (Phase 4) |
+| Callsign | `CL-<PROFILE>-<first 4 of session id>` (`CL-BIZ-CF5A`), `CL-<id4>` for `~/.claude`, `AGY-<id4>` | Unique per session, still short |
+| Airspace | Sessions with a transcript line in the last 30 min (`TRACON_WINDOW_MIN`) or a live pid | Hundreds of old transcripts exist |
+| Wire format | Every WebSocket message (and `GET /api/flights`) is `{"flights": FlightPacket[]}`, the whole airspace, sent on change. A packet keeps its `id` until its content changes | Clients learn when a flight leaves; reconnects need no replay |
+| Server | One process on `127.0.0.1:4040`: `/ws`, `/api/flights`, and the built UI. Socket refuses non-localhost `Origin` | Any web page could otherwise read session paths and commands |
+| Orchestration | `src/airspace.ts` (scan + tail + normalize, no network) sits between the modules of section 6 and `server.ts` | Testable end to end without sockets |
+| Lint | `tsc --noEmit` on both packages (strict) is the lint step; no ESLint | No extra toolchain for a two-package repo |
+| DAG data (p2_2) | Not in `FlightPacket`. Each `Flight` keeps a `TraceNode` list (types.ts): turn, tool and subagent nodes with start/end and tokens, served on demand at `GET /api/trace?flight=<callsign>`. Last 40 turns, up to 100 tool calls per turn; `Agent`/`Task` calls are never trimmed | Broadcasting every flight's history on each change would grow the socket traffic; the deck asks only for the flight it shows |
+| DAG shape | A turn starts at a user prompt (or at agent work after a finished turn). Tools in one message fan out from the same parent; the next message hangs off the last of them. Turn tokens use the same per-response de-duplication as fuel | Mirrors how Claude Code and agy actually batch tool calls |
+| Subagent edges | A Claude subagent attaches to the latest `Agent`/`Task` call before its first line, within that turn; else to the turn | Transcripts give no direct link; on this machine 377 of 379 subagents matched a spawning call |
+| Durations | A node's end is clamped to its start | Some transcripts append lines stamped earlier than the line before |
+| DAG layout | One column per turn, children stacked below; no layout library (no dagre/elk). Opens zoomed on the six most recent nodes | Turn sequence is linear, so a column layout is enough |
+| Alerter (p2_3) | In the Flight Deck: WebAudio two-tone chime plus the browser `Notification` API (macOS Notification Center). Opt-in via the ALERTS toggle (stored in `localStorage`), once per flight per 2 min, tab title shows the holding count | Audio and notifications both need a user gesture or permission in the browser; the engine stays a read-only observer with no `osascript` |

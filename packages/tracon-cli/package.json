@@ -1,0 +1,6 @@
+{
+  "name": "tracon-cli",
+  "private": true,
+  "type": "module",
+  "bin": { "tracon": "bin/tracon.js" }
+}
