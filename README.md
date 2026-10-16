@@ -26,7 +26,13 @@
 
 **[Download the latest beta (beta_0.1)](https://github.com/the-abraar/TRACON/releases/tag/beta_0.1)**: pick `tracon-macos-arm64.zip` for Apple Silicon (M1 and newer) or `tracon-macos-x64.zip` for Intel Macs. It is one self-contained file with the Flight Deck inside.
 
-Easiest, in Terminal (downloads, unzips and runs it):
+With [Homebrew](https://brew.sh) (no Gatekeeper warning, picks the right chip for you):
+
+```bash
+brew install the-abraar/tap/tracon && tracon
+```
+
+Without Homebrew, in Terminal (downloads, unzips and runs it):
 
 ```bash
 curl -L "https://github.com/the-abraar/TRACON/releases/download/beta_0.1/tracon-macos-$(uname -m | sed s/x86_64/x64/).zip" -o tracon.zip && unzip -o tracon.zip && ./tracon
