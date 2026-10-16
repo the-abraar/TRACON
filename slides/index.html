@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TRACON Feature Tour</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--outer:#01040f;--paper:#050b18;--ink:#d6e2ee;--deep:#e6f6ef;--accent:#34d399;--line:#1c2a3d;--card:#0b1426;--bar:#111c30;--dot:#2a3a52;
+--muted:#8193a8;--ok:#34d399;--ok-bg:rgba(52,211,153,.08);--warn:#fbbf24;--warn-bg:rgba(251,191,36,.08);--hud:rgba(11,20,38,.94);--title-sub:#b9c8d6;--title-meta:#6f8299;
+--serif:"Space Grotesk",system-ui,sans-serif;--sans:"Inter",system-ui,-apple-system,"Segoe UI",sans-serif;--mono:"JetBrains Mono",ui-monospace,Menlo,monospace;}
+
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:var(--outer);color:var(--ink);font-family:var(--sans);overflow:hidden}
+#viewport{position:fixed;inset:0;display:flex;align-items:center;justify-content:center}
+#stage{width:1600px;height:900px;position:relative;transform-origin:center center;flex:none}
+.slide{position:absolute;inset:0;background:var(--paper);display:none;overflow:hidden}
+.slide.active{display:flex}
+.slide::after{content:"";position:absolute;left:0;right:0;bottom:0;height:6px;background:linear-gradient(90deg,var(--deep) 0 70%,var(--accent) 70%)}
+.eyebrow{font-family:var(--mono);font-size:15px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);margin-bottom:14px}
+h1,h2{font-family:var(--serif);color:var(--deep);font-weight:600;line-height:1.08}
+h1{font-size:84px}
+h2{font-size:46px;margin-bottom:22px}
+ul.b{list-style:none;display:flex;flex-direction:column;gap:14px}
+ul.b li{font-size:21px;line-height:1.45;padding-left:26px;position:relative}
+ul.b li::before{content:"";position:absolute;left:0;top:.62em;width:10px;height:10px;background:var(--accent);transform:rotate(45deg)}
+code,.mono{font-family:var(--mono);font-size:.9em}
+.chip{display:inline-block;font-family:var(--mono);font-size:13px;letter-spacing:.06em;text-transform:uppercase;padding:6px 10px;border:1px solid;margin-top:26px}
+.chip.live{color:var(--ok);border-color:var(--ok);background:var(--ok-bg)}
+.chip.notlive{color:var(--warn);border-color:var(--warn);background:var(--warn-bg)}
+.note{font-size:15px;color:var(--muted);line-height:1.5;margin-top:14px}
+.split{padding:64px 64px 56px 72px;gap:48px;align-items:center}
+.split .txt{flex:0 0 470px}
+.split .media{flex:1;display:flex;gap:22px;align-items:center;justify-content:center;height:100%;min-width:0}
+.frame{background:var(--card);border:1px solid var(--line);box-shadow:0 18px 40px rgba(0,0,0,.16);display:flex;flex-direction:column;overflow:hidden;min-width:0}
+.frame .bar{height:26px;background:var(--bar);display:flex;align-items:center;gap:6px;padding:0 10px;flex:none;font-family:var(--mono);font-size:11px;color:var(--muted)}
+.frame .bar i{width:9px;height:9px;border-radius:50%;background:var(--dot);display:block}
+.frame .bar span{margin-left:10px}
+.frame img{display:block;width:100%;height:auto}
+.desk{width:960px;max-width:100%}
+.desk.crop img{height:600px;object-fit:cover;object-position:top}
+.stack{display:flex;flex-direction:column;gap:18px;width:100%;align-items:center}
+.stack .desk img{height:330px;object-fit:cover;object-position:top}
+.phone{width:250px;border-radius:28px;border:8px solid #1d2420;box-shadow:0 18px 40px rgba(0,0,0,.22);overflow:hidden;background:#000;flex:none}
+.phone img{display:block;width:100%;height:auto}
+.panel{flex:0 1 auto;min-width:0;box-shadow:0 18px 40px rgba(0,0,0,.2);border:1px solid var(--line);background:var(--card)}
+.panel img{display:block;max-height:720px;max-width:100%;height:auto}
+.pstack{display:flex;flex-direction:column;gap:18px;align-items:center;min-width:0;max-width:100%}
+.pstack .panel img{max-height:var(--ph,360px)}
+.title{flex-direction:column;justify-content:center;padding:0 120px;background:var(--deep);color:var(--paper)}
+.title::after{background:var(--accent)}
+.title h1{color:var(--paper)}
+.title h1 .t{color:var(--accent)}
+.title .tag{font-size:30px;margin-top:22px;color:var(--title-sub)}
+.title .tagbn{font-size:26px;margin-top:6px;color:var(--accent)}
+.title .meta{font-family:var(--mono);font-size:15px;margin-top:56px;color:var(--title-meta);letter-spacing:.05em}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:22px;margin-top:10px}
+.card{background:var(--card);border:1px solid var(--line);padding:24px 24px 26px}
+.card h3{font-family:var(--serif);font-size:26px;color:var(--deep);margin-bottom:10px}
+.card p{font-size:18px;line-height:1.5}
+.plain{flex-direction:column;justify-content:center;padding:72px 90px}
+.tbl{width:100%;border-collapse:collapse;font-size:19px;margin-top:6px}
+.tbl td{padding:11px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+.tbl td:first-child{font-family:var(--mono);font-size:16px;color:var(--ok);white-space:nowrap;width:300px}
+#hud{position:fixed;bottom:14px;right:18px;display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:13px;color:var(--deep);z-index:5;user-select:none;background:var(--hud);border:1px solid var(--line);padding:4px 6px}
+#hud button{background:var(--deep);color:var(--paper);border:0;width:34px;height:30px;cursor:pointer;font-size:15px}
+#hud button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+#progress{position:fixed;left:0;top:0;height:3px;background:var(--accent);z-index:5;transition:width .2s}
+
+#hud button{color:#050b18}.title{background:radial-gradient(circle at 78% 40%,rgba(52,211,153,.14),transparent 45%),#050b18}.title::after{background:var(--accent)}h1 .t{color:var(--accent)}.title h1{color:var(--deep)}
+</style>
+</head>
+<body>
+<div id="progress"></div>
+<div id="viewport"><div id="stage">
+<section class="slide title" aria-label="Title"><svg width="110" height="110" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="1.6" stroke-linecap="round" style="margin-bottom:30px" aria-hidden="true"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/><path d="M12 12 19 5"/></svg><h1>TRACON <span class="t">ATC</span></h1><p class="tag">Air traffic control for your local AI coding agents.</p><p class="meta">main @ 75391f0 · screenshots of the real Flight Deck reading this Mac's sessions, 16 Oct 2026 · ← → or Space to move</p></section>
+<section class="slide plain" aria-label="Many agents, many accounts, and no radar"><p class="eyebrow">The problem</p><h2>Many agents, many accounts, and no radar</h2><p style="font-size:22px;line-height:1.5;max-width:1200px;margin-bottom:30px">A working day now means several Claude Code profiles on different plans, Antigravity sessions with their own subagents, and a terminal tab for each. Nothing shows them all in one place.</p><div class="grid3"><div class="card"><h3>Silent waits</h3><p>An agent stops on a question or a permission prompt and sits there for an hour because its tab is hidden.</p></div><div class="card"><h3>Invisible burn</h3><p>Tokens burn across five accounts at once, and the first sign of trouble is a rate limit.</p></div><div class="card"><h3>Lost structure</h3><p>A long session with subagents is a wall of transcript; what ran when, and how long it took, is hard to see.</p></div></div></section>
+<section class="slide plain" aria-label="The Avalokita engine: a read-only observer"><p class="eyebrow">How it works</p><h2>The Avalokita engine: a read-only observer</h2><table class="tbl"><tr><td>1 · Watch</td><td>Tails every Claude Code profile's transcripts (<code>~/.claude*/projects/**/*.jsonl</code>), live-session pid files and Antigravity brain transcripts, through FSEvents plus a 2-second poll</td></tr><tr><td>2 · Normalize</td><td>Turns Claude Code and Antigravity events into one <code>FlightPacket</code> per session: state, tool in flight, subagents, tokens, burn rate</td></tr><tr><td>3 · Broadcast</td><td>Pushes the whole airspace over <code>ws://127.0.0.1:4040/ws</code> on every change; the same snapshot at <code>GET /api/flights</code></td></tr><tr><td>4 · Trace</td><td>Keeps a bounded execution DAG per flight (last 40 turns, up to 100 tool calls each) at <code>GET /api/trace?flight=&lt;callsign&gt;</code></td></tr><tr><td>Read-only</td><td>Never writes to <code>~/.claude*</code> or <code>~/.gemini</code>; <code>scripts/check.sh</code> fails the build if the engine source gains a write call</td></tr></table></section>
+<section class="slide plain" aria-label="Sessions are flights, you are the controller"><p class="eyebrow">The metaphor</p><h2>Sessions are flights, you are the controller</h2><table class="tbl"><tr><td>Flight · callsign</td><td>One agent session. <code>CL-BIZ-37AA</code> = Claude Code, profile <code>~/.claude-biz</code>, session id; <code>AGY-37AC</code> = Antigravity</td></tr><tr><td>Squawk</td><td>The plan behind the account: <code>SQ-20</code> Pro, <code>SQ-100</code> Team or Max, <code>SQ-AGY</code> (set with <code>TRACON_TIERS</code>)</td></tr><tr><td>State</td><td><code>PREFLIGHT</code> → <code>CRUISING</code> → <code>TOOL</code> (executing) → <code>HOLDING</code> (waiting on you) → <code>LANDED</code>, or <code>ABORTED</code></td></tr><tr><td>Escorts</td><td>Subagents spawned by a flight, shown as chips on its card and as nodes in its DAG</td></tr><tr><td>Burn rate</td><td>Tokens per minute, averaged over 5 minutes, per flight and for the whole fleet</td></tr></table></section>
+<section class="slide split" aria-label="Every session on one screen"><div class="txt"><p class="eyebrow">Flight Deck · localhost:4040</p><h2>Every session on one screen</h2><ul class="b"><li>One card per session active in the window, across all five Claude profiles and Antigravity.</li><li>The fleet bar on top counts flights, airborne and holding, plus the total burn per minute.</li><li>Updates live over the WebSocket; no refresh needed.</li></ul><span class="chip live">Built · Phase 2</span><p class="note">Real data: 49 sessions from this Mac in a 2-day window (TRACON_WINDOW_MIN=2880; the default is 30 minutes).</p></div><div class="media"><div class="frame desk"><div class="bar"><i></i><i></i><i></i><span>localhost:4040</span></div><img src="screenshots/fleet.jpg" alt="Flight Deck with 49 real flights"></div></div></section>
+<section class="slide split" aria-label="The whole airspace in four numbers"><div class="txt"><p class="eyebrow">Fleet bar</p><h2>The whole airspace in four numbers</h2><ul class="b"><li>FLIGHTS on the radar, how many are AIRBORNE, how many are HOLDING, and the fleet's BURN / MIN.</li><li>ENGINE LIVE shows the WebSocket is connected; it turns to ENGINE OFFLINE if the engine stops.</li><li>The ALERTS switch turns on the holding chime and notifications.</li></ul><span class="chip live">Built · Phase 2</span></div><div class="media"><div class="pstack" style="--ph:140px"><div class="panel"><img src="screenshots/hdr-left.jpg" alt="TRACON ATC logo and engine status"></div><div class="panel"><img src="screenshots/hdr-right.jpg" alt="Fleet counters and alerts switch"></div></div></div></section>
+<section class="slide split" aria-label="What each agent is doing right now"><div class="txt"><p class="eyebrow">Flight cards</p><h2>What each agent is doing right now</h2><ul class="b"><li>Callsign, squawk and state badge; runtime, working folder and pid.</li><li>The tool in flight with its argument (here a Bash command), and a chip per subagent with its own state.</li><li>Burn-rate bar, token totals in and out, and the time since the last event.</li></ul><span class="chip live">Built · Phase 2</span><p class="note">The quota gauge shows n/a: no quota data source exists yet.</p></div><div class="media"><div class="panel"><img src="screenshots/card-live.jpg" alt="Live Claude Code flight card"></div><div class="panel"><img src="screenshots/card-agy.jpg" alt="Antigravity flight card"></div></div></section>
+<section class="slide split" aria-label="A session&#x27;s history as a graph"><div class="txt"><p class="eyebrow">Execution DAG · VIEW DAG</p><h2>A session's history as a graph</h2><ul class="b"><li>Each turn is a column, chained left to right; its tool calls hang below in order.</li><li>Agent calls and the subagents they spawned are linked, with tokens per subagent.</li><li>Badges show latency (or running) and tokens per turn. Pan, zoom and the minimap reach older turns.</li></ul><span class="chip live">Built · Phase 2</span><p class="note">A real session: 10 turns, 34 nodes, 3 subagents.</p></div><div class="media"><div class="panel"><img src="screenshots/dag-cf5a-fit.jpg" alt="Execution DAG for a session with three subagents"></div></div></section>
+<section class="slide split" aria-label="Zoom in on any step"><div class="txt"><p class="eyebrow">DAG detail</p><h2>Zoom in on any step</h2><ul class="b"><li>Hover a node for its full path or command; colour marks the kind of step (turn, read, edit, shell, subagent).</li><li>Long sessions stay readable: the DAG opens zoomed on the six most recent nodes.</li><li>It refreshes whenever the engine sends a new packet for that flight.</li></ul><span class="chip live">Built · Phase 2</span></div><div class="media"><div class="pstack" style="--ph:330px"><div class="panel"><img src="screenshots/dag-cf5a-sub.jpg" alt="Zoomed DAG with a subagent node"></div><div class="panel"><img src="screenshots/dag-landed.jpg" alt="DAG of a longer session"></div></div></div></section>
+<section class="slide split" aria-label="Know the moment an agent needs you"><div class="txt"><p class="eyebrow">Holding alerts</p><h2>Know the moment an agent needs you</h2><ul class="b"><li>A flight waiting on you (a question, a plan approval, or a tool call with no result for 60 s) turns amber and pulses.</li><li>With ALERTS on: a two-tone chime and a system notification, at most once per flight every 2 minutes.</li><li>The tab title shows the count, e.g. <code>(1) HOLDING · TRACON ATC</code>, even in a background tab.</li></ul><span class="chip notlive">Demo session</span><p class="note">CL-DEMO-BEEF is a scripted demo session. The notification it fired: "CL-DEMO-BEEF is holding | /work/demo · AskUserQuestion is waiting on you".</p></div><div class="media"><div class="frame desk"><div class="bar"><i></i><i></i><i></i><span>localhost:4040 · (1) HOLDING</span></div><img src="screenshots/holding.jpg" alt="Flight Deck with one holding flight"></div><div class="panel"><img src="screenshots/card-holding.jpg" alt="Holding flight card"></div></div></section>
+<section class="slide split" aria-label="The same radar without a browser"><div class="txt"><p class="eyebrow">Terminal · tracon status</p><h2>The same radar without a browser</h2><ul class="b"><li><code>tracon status</code> prints one line per flight: squawk, callsign, runtime, state, tool and tokens.</li><li>Holding flights are listed at the bottom with their folder.</li><li><code>tracon start</code> runs the engine and opens the Flight Deck; <code>--no-open</code> skips the browser.</li></ul><span class="chip live">Built · Phase 2</span><p class="note">Real output from this Mac.</p></div><div class="media"><div class="panel"><img src="screenshots/status.jpg" alt="tracon status output"></div></div></section>
+<section class="slide split" aria-label="Check the fleet from your phone"><div class="txt"><p class="eyebrow">Mobile</p><h2>Check the fleet from your phone</h2><ul class="b"><li>The deck collapses to one column; the fleet bar stays on top.</li><li>The DAG works with touch pan and zoom; the minimap hides on small screens.</li></ul><span class="chip live">Built · Phase 2</span><p class="note">Captured at 390 × 844. The engine binds to 127.0.0.1, so a phone needs a tunnel or a LAN bind to reach it.</p></div><div class="media"><div class="phone"><img src="screenshots/m-fleet.jpg" alt="Flight Deck on a phone"></div><div class="phone"><img src="screenshots/m-dag.jpg" alt="Execution DAG on a phone"></div></div></section>
+<section class="slide plain" aria-label="Small, local and tested"><p class="eyebrow">Under the hood</p><h2>Small, local and tested</h2><table class="tbl"><tr><td>Packages</td><td>npm workspaces: <code>avalokita-engine</code> (Node, TypeScript), <code>tracon-ui</code> (React, Vite, Tailwind, React Flow), <code>tracon-cli</code></td></tr><tr><td>Runtimes</td><td>Claude Code (every <code>~/.claude*</code> profile and <code>CLAUDE_CONFIG_DIR</code>) and Google Antigravity</td></tr><tr><td>Settings</td><td><code>TRACON_PORT</code> (4040), <code>TRACON_WINDOW_MIN</code> (30), <code>TRACON_TIERS</code> (plan per profile)</td></tr><tr><td>Checks</td><td><code>scripts/check.sh</code>: install, two typechecks, stray files, read-only guard, 16 tests, UI build</td></tr><tr><td>Tested on</td><td>One 30-day sweep: 287 flights, 16,248 DAG nodes, no broken edges; 377 of 379 subagents matched to the call that spawned them</td></tr></table></section>
+<section class="slide plain" aria-label="Built so far, and the roadmap"><p class="eyebrow">What's next</p><h2>Built so far, and the roadmap</h2><table class="tbl"><tr><td>Done</td><td>Phase 1 (engine, scanners, WebSocket server) and Phase 2 (Flight Deck, execution DAG, holding alerts)</td></tr><tr><td>Phase 3</td><td>Ops Lounge: a PixiJS pixel-art radar room, characters animated by the tool they run, subagents orbiting their parent</td></tr><tr><td>Phase 4</td><td>TCAS: warn when two agents edit the same file; rate-limit forecasts per plan</td></tr><tr><td>Known limits</td><td>Holding is a guess for long tool calls; alerts need the tab open; quota shows n/a; DAG keeps the last 40 turns; subagents match to their spawning call by time</td></tr></table></section>
+<section class="slide title" aria-label="Title"><svg width="110" height="110" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="1.6" stroke-linecap="round" style="margin-bottom:30px" aria-hidden="true"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/><path d="M12 12 19 5"/></svg><h1>TRACON <span class="t">ATC</span></h1><p class="tag">See every agent. Hear the one that needs you.</p><p class="meta">npm install · npm start · open localhost:4040</p></section>
+</div></div>
+<div id="hud"><button id="prev" aria-label="Previous slide">‹</button><span id="count" aria-live="polite">1 / 1</span><button id="next" aria-label="Next slide">›</button></div>
+<script>
+(function(){
+  var slides=[].slice.call(document.querySelectorAll('.slide')),i=0,stage=document.getElementById('stage');
+  function fit(){var s=Math.min(innerWidth/1600,innerHeight/900);stage.style.transform='scale('+s+')';}
+  function show(n){
+    i=Math.max(0,Math.min(slides.length-1,n));
+    slides.forEach(function(s,k){s.classList.toggle('active',k===i);});
+    document.getElementById('count').textContent=(i+1)+' / '+slides.length;
+    document.getElementById('progress').style.width=((i+1)/slides.length*100)+'%';
+    try{history.replaceState(null,'','#'+(i+1));}catch(e){}
+  }
+  addEventListener('keydown',function(e){
+    var k=e.key;
+    if(k==='ArrowRight'||k==='ArrowDown'||k==='PageDown'||k===' '||k==='Enter'){e.preventDefault();show(i+1);}
+    else if(k==='ArrowLeft'||k==='ArrowUp'||k==='PageUp'||k==='Backspace'){e.preventDefault();show(i-1);}
+    else if(k==='Home'){show(0);}else if(k==='End'){show(slides.length-1);}
+  });
+  document.getElementById('prev').onclick=function(){show(i-1);};
+  document.getElementById('next').onclick=function(){show(i+1);};
+  addEventListener('resize',fit);fit();
+  show((parseInt(location.hash.slice(1),10)||1)-1);
+})();
+</script>
+</body>
+</html>
