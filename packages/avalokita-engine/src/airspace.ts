@@ -1,6 +1,8 @@
 import { statSync } from "node:fs";
 import { join } from "node:path";
+import { COLLISION_WINDOW_MS, findCollisions, type FileWrite } from "./collision.ts";
 import { Flight, type LiveInfo } from "./normalizer.ts";
+import { parseQuotaFiles, readQuota } from "./quota.ts";
 import { parseAgyLine } from "./parsers/agy.ts";
 import { parseClaudeLine } from "./parsers/claude.ts";
 import { agyBrainDir, agyTasks, agyTranscripts } from "./scanners/agy.ts";
@@ -27,6 +29,8 @@ interface Tracked {
   role: string;
   live?: LiveInfo;
   conv?: string;
+  /** Claude profile suffix, for TRACON_QUOTA */
+  profile?: string;
 }
 
 /** Scans every runtime's transcripts, tails the recent ones and turns each session into a FlightPacket. */
@@ -39,13 +43,15 @@ export class Airspace {
   private home: string;
   private windowMs: number;
   private tiers: Map<string, AccountTier>;
+  private quotaFiles: Map<string, string>;
   private env: NodeJS.ProcessEnv;
 
-  constructor(opts: { home: string; windowMs: number; tiers?: string; env?: NodeJS.ProcessEnv }) {
+  constructor(opts: { home: string; windowMs: number; tiers?: string; quota?: string; env?: NodeJS.ProcessEnv }) {
     this.home = opts.home;
     this.env = opts.env ?? process.env;
     this.windowMs = opts.windowMs;
     this.tiers = parseTiers(opts.tiers);
+    this.quotaFiles = parseQuotaFiles(opts.quota);
   }
 
   /** Directories worth an fs.watch. */
@@ -64,6 +70,7 @@ export class Airspace {
           flight: new Flight({ callsign, runtime: "claude-code", tier }),
           parse: (line) => parseClaudeLine(line, !!t.parentPath),
           role: t.parentPath ? subagentRole(t.path) : "main",
+          profile: p.name,
         }));
       }
     }
@@ -78,6 +85,15 @@ export class Airspace {
       }));
     }
 
+    // TCAS: a subagent's writes count as its parent's, then any file two flights wrote in the window is flagged
+    const writes: FileWrite[] = [];
+    for (const [path, e] of this.tracked) {
+      const owner = this.tracked.get(e.t.parentPath ?? path) ?? e;
+      for (const w of e.flight.writes(now - COLLISION_WINDOW_MS)) writes.push({ callsign: owner.flight.meta.callsign, ...w });
+    }
+    const collisions = findCollisions(writes, now);
+    const quota = new Map<string, number | undefined>(); // one read per usage file per tick
+
     const packets: FlightPacket[] = [];
     for (const [path, e] of this.tracked) {
       if (e.t.parentPath || !this.inWindow(e, now)) continue;
@@ -87,6 +103,14 @@ export class Airspace {
             .filter((c) => c.t.parentPath === path && this.inWindow(c, now))
             .map((c) => ({ id: c.t.sessionId, role: c.role, state: c.flight.state(now) }));
       let p = e.flight.packet(now, e.live, subagents);
+      const collision = collisions.get(p.flightCallsign);
+      if (collision) p = { ...p, collisionWarning: collision };
+      const quotaFile = e.profile === undefined ? undefined : this.quotaFiles.get(e.profile);
+      if (quotaFile !== undefined) {
+        if (!quota.has(quotaFile)) quota.set(quotaFile, readQuota(quotaFile, now));
+        const pct = quota.get(quotaFile);
+        if (pct !== undefined) p = { ...p, fuelMetrics: { ...p.fuelMetrics, quotaPercentage: pct } };
+      }
       const old = this.prev.get(p.flightCallsign);
       if (old && JSON.stringify({ ...old, id: "" }) === JSON.stringify({ ...p, id: "" })) p = old; // unchanged: keep its event id
       this.prev.set(p.flightCallsign, p);

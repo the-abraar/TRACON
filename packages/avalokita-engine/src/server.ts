@@ -22,8 +22,9 @@ export interface EngineOptions {
   home?: string;
   windowMs?: number;
   tiers?: string;
+  quota?: string;
   uiDist?: string;
-  /** read for CLAUDE_CONFIG_DIR, TRACON_WINDOW_MIN, TRACON_TIERS */
+  /** read for CLAUDE_CONFIG_DIR, TRACON_WINDOW_MIN, TRACON_TIERS, TRACON_QUOTA */
   env?: NodeJS.ProcessEnv;
 }
 
@@ -36,6 +37,7 @@ export async function startEngine(opts: EngineOptions = {}) {
     home: opts.home ?? homedir(),
     windowMs: opts.windowMs ?? Number(env.TRACON_WINDOW_MIN ?? 30) * 60_000,
     tiers: opts.tiers ?? env.TRACON_TIERS,
+    quota: opts.quota ?? env.TRACON_QUOTA,
     env,
   });
 

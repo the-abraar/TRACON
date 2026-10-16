@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { isAbsolute, resolve } from "node:path";
 import type { AccountTier, FlightPacket, FlightState, ParsedEvent, ToolAction, ToolCall, TraceNode } from "./types.ts";
 
 export const HOLD_AFTER_MS = 60_000;
@@ -8,6 +9,8 @@ export const MAX_TURNS = 40;
 export const MAX_TOOLS_PER_TURN = 100;
 // Tools that always block on the human.
 const HOLD_TOOLS = new Set(["AskUserQuestion", "ExitPlanMode"]);
+// A Claude subagent ends by handing its report back; its transcript has no turn_end after that call's result.
+const END_TOOLS = new Set(["SubagentHandback"]);
 
 export interface FlightMeta {
   callsign: string;
@@ -23,6 +26,7 @@ export interface LiveInfo {
 }
 
 export function toolAction(name: string): ToolAction {
+  if (END_TOOLS.has(name)) return "other"; // names "subagent" but spawns nothing
   if (/^(task|agent)$|subagent/i.test(name)) return "subagent";
   if (/bash|command|shell/i.test(name)) return "bash";
   if (/write|edit|replace/i.test(name)) return "write";
@@ -101,9 +105,11 @@ export class Flight {
       const excess = turn.tools.length - MAX_TOOLS_PER_TURN;
       if (excess > 0) turn.tools = turn.tools.filter((n, i) => i >= excess || n.action === "subagent");
     }
+    let handedBack = false;
     if (e.kind === "tool_result") {
       // agy results carry no id: they close the oldest pending call
       for (const id of e.toolUseIds.length ? e.toolUseIds : [...this.pending.keys()].slice(0, 1)) {
+        handedBack ||= END_TOOLS.has(this.pending.get(id)?.name ?? "");
         this.pending.delete(id);
         for (let i = this.turns.length - 1; i >= 0; i--) {
           const node = this.turns[i]!.tools.find((n) => n.id === `tool-${id}`);
@@ -114,9 +120,21 @@ export class Flight {
         }
       }
     }
-    if (e.kind === "turn_end") this.closeTurn(e.ts);
-    if (e.kind === "prompt" || e.kind === "turn_end") this.pending.clear();
-    this.last = e.kind;
+    if (e.kind === "turn_end" || handedBack) this.closeTurn(e.ts);
+    if (e.kind === "prompt" || e.kind === "turn_end" || handedBack) this.pending.clear();
+    this.last = handedBack ? "turn_end" : e.kind;
+  }
+
+  /** Files this flight's write tools touched at or after `since`; relative paths resolve against the session cwd. */
+  writes(since: number): { file: string; ts: number }[] {
+    const out: { file: string; ts: number }[] = [];
+    for (const t of this.turns) {
+      for (const n of t.tools) {
+        if (n.action !== "write" || !n.detail || n.start < since) continue;
+        out.push({ file: isAbsolute(n.detail) || !this.cwd ? n.detail : resolve(this.cwd, n.detail), ts: n.start });
+      }
+    }
+    return out;
   }
 
   private closeTurn(ts: number): void {

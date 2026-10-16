@@ -38,16 +38,24 @@ Built and judged 2026-10-16. I read PLAN.md, findings.md, README.md and combo_of
 
 1. **Holding is a guess.** Transcripts have no "waiting for approval" entry, so a tool call with no result and no new line for 60 s is called holding. A long build or test run looks identical. The `sessions/<pid>.json` status may expose a waiting value, but only `busy`, `idle` and `shell` were observed. Only `~/.claude-biz` and `~/.claude-grr` wrote pid files during the run, so the other profiles rely on transcripts alone.
 2. **Alerts need the Flight Deck tab open.** The chime and notification come from the browser, so with no tab open nothing alerts; the chime also needs one click on the page after each reload (browser autoplay rule). They inherit the holding heuristic's false positives (long builds), damped by the 2-minute cooldown. Sound was not heard in testing (headless); the notification call was verified.
-3. **No quota.** `quotaPercentage` is never set; the gauge reads `n/a`. `accountTier` defaults to `pro_20` unless `TRACON_TIERS` says otherwise.
+3. **Quota is thin.** `quotaPercentage` comes only from `TRACON_QUOTA` usage mirrors, and only the `hat` profile writes one. `accountTier` defaults to `pro_20` unless `TRACON_TIERS` says otherwise.
 4. **agy holding and subagents are unverified.** No approval prompt or `invoke_subagent` call exists in the local agy data; the `WAIT*` status mapping and subagent naming are untested against real output. agy cwd comes from the last `run_command` Cwd, so a conversation that never ran a command has an empty cwd.
-5. **Not built:** Ops Lounge / PixiJS (Phase 3), TCAS and burn-rate forecasting (Phase 4), the File Attention Heatmap, `transcript_full.jsonl`. The DAG shows agy background tasks only on the card, not as DAG nodes.
+5. **Not built:** Ops Lounge / PixiJS (Phase 3), burn-rate forecasting (p4_2), the File Attention Heatmap, `transcript_full.jsonl`. The DAG shows agy background tasks only on the card, not as DAG nodes.
 8. **DAG limits**: only the last 40 turns and 100 calls per turn are kept; subagents are matched to their `Agent` call by time, not id; the first tick reads every in-window transcript from the start (about 3 s for a 30-day window, instant for the default 30 min).
 6. **Scale**: each tick stats every transcript (~860 files, ~10 ms). Fine on this machine; revisit if a profile grows to tens of thousands.
 7. **Callsign collisions**: 4 hex chars per session; two sessions in one profile sharing a prefix would merge on the deck (about 1 in 65k per pair).
 
+## Update (2026-10-16, agent round)
+
+- **Fixed: finished subagents showed `running` forever.** Every Claude subagent transcript on this Mac (18 of 18) ends with a `SubagentHandback` call and its result, and no `turn_end`. The normalizer now treats that result as the end of the turn, so the subagent lands and its DAG node gets an end time. `toolAction` no longer files `SubagentHandback` as a spawn. On real data (3-day window): 0 subagent nodes left running; CL-BIZ-CF5A's 3 now end.
+- **Built: p4_1 TCAS** (`collision.ts`). Two flights writing one file within 5 minutes get `collisionWarning`, a red card with the shared file, and one `TCAS:` line per pair in `tracon status`. Writes only; a subagent's writes count as its parent's. Checked with a two-session demo home in headless Chrome.
+- **Built: quota source** (`quota.ts`, `TRACON_QUOTA="HAT=/path/usage.md"`). Reads the 5-hour percentage from a statusline-usage.py mirror until its window resets. Only the `hat` profile writes a mirror today, and its last reading (15 Oct) has expired, so the gauge still reads n/a until that status line runs again.
+- Proof: `scripts/check.sh` passes all 7 steps; 21 tests (6 new, 2 of them fail on the old normalizer).
+
 ## Next steps
 
 1. Catch one real Claude permission prompt and one agy approval with the engine running, and record what `sessions/<pid>.json` and the agy transcript contain at that moment. Replace the 60 s heuristic with that signal where it exists.
-2. Decide the tier for each profile and set `TRACON_TIERS` (or give TRACON a quota source; `~/.claude-hat/statusline-usage.py` already sees usage for one profile).
-3. Phase 4 TCAS: the DAG already records write targets per flight (`action: "write"`, `detail`); flag two flights writing the same file within 5 minutes (`collisionWarning`).
+2. Owner: decide the tier for each profile (`TRACON_TIERS`), and add a usage-mirror status line to the profiles you want quota for (only `hat` has one).
+3. p4_2 burn-rate forecasting: with quota readings over time, project when the 5-hour window runs out.
 4. Phase 3 Ops Lounge (PixiJS), once the radar deck has been used for a while.
+

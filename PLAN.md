@@ -190,7 +190,7 @@ agentviz/
 
 Choices the plan left open, and where findings.md or the real data on this machine overrode it.
 
-**Status (2026-10-16):** built and verified: Phase 1 (p1_1 to p1_3) and Phase 2 (p2_1 Fleet Bar & Quota Gauges, p2_2 Interactive DAG, p2_3 Smart Alerter). Not built: Phase 3 (p3_1, p3_2 Ops Lounge), Phase 4 (p4_1 TCAS, p4_2 burn-rate forecasting), and the File Attention Heatmap from section 4 (no milestone in section 5). `collision.ts` from section 6 belongs to p4_1 and does not exist yet.
+**Status (2026-10-16):** built and verified: Phase 1 (p1_1 to p1_3) and Phase 2 (p2_1 Fleet Bar & Quota Gauges, p2_2 Interactive DAG, p2_3 Smart Alerter). p4_1 TCAS is built too (`collision.ts`, 2026-10-16): writes only, a subagent's writes fold into its parent, warnings clear 5 minutes after the last shared write. Not built: Phase 3 (p3_1, p3_2 Ops Lounge), p4_2 burn-rate forecasting, and the File Attention Heatmap from section 4 (no milestone in section 5).
 
 | Topic | Decision | Why |
 |---|---|---|
@@ -202,7 +202,7 @@ Choices the plan left open, and where findings.md or the real data on this machi
 | Holding detection | `AskUserQuestion`/`ExitPlanMode` pending, a live status containing wait/input/permission, an agy `WAIT*` status, or any tool call with no result and no new transcript line for 60 s | Transcripts have no "awaiting approval" entry. A long build also shows as holding after 60 s |
 | Fuel | input = `input_tokens + cache_creation_input_tokens`; cache reads excluded; one API response counted once (keyed by message id); burn = tokens in the last 5 min / 5 | Cache reads re-count the whole context every turn and would swamp the gauge |
 | `accountTier` | `TRACON_TIERS="BIZ=team_100,WORK=api_usage"` (profile suffix, `""` = `~/.claude`); unlisted Claude profiles are `pro_20`, agy is `gemini` | Plan tiers are not recorded anywhere on disk |
-| `quotaPercentage` | Left unset; the gauge shows `n/a` | No quota source yet (Phase 4) |
+| `quotaPercentage` | From `TRACON_QUOTA` usage mirrors (5-hour window); unset otherwise, and the gauge shows `n/a` | Transcripts carry no quota; only a status line sees `rate_limits` |
 | Callsign | `CL-<PROFILE>-<first 4 of session id>` (`CL-BIZ-CF5A`), `CL-<id4>` for `~/.claude`, `AGY-<id4>` | Unique per session, still short |
 | Airspace | Sessions with a transcript line in the last 30 min (`TRACON_WINDOW_MIN`) or a live pid | Hundreds of old transcripts exist |
 | Wire format | Every WebSocket message (and `GET /api/flights`) is `{"flights": FlightPacket[]}`, the whole airspace, sent on change. A packet keeps its `id` until its content changes | Clients learn when a flight leaves; reconnects need no replay |

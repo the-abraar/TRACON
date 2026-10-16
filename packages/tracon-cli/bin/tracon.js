@@ -27,6 +27,13 @@ if (cmd === "start") {
   for (const f of flights)
     row(SQ[f.accountTier], f.flightCallsign, f.runtime, f.flightState.toUpperCase(), f.activeTool?.name ?? "-", `${k(f.fuelMetrics.totalTokens)} (${k(f.fuelMetrics.burnRatePerMin)})`);
   for (const f of holding) console.log(`HOLDING: ${f.flightCallsign} in ${f.cwd} is waiting on you.`);
+  const pairs = new Set(); // both flights carry the warning; print each pair once
+  for (const f of flights.filter((f) => f.collisionWarning)) {
+    const { conflictingFlight: other, sharedFile } = f.collisionWarning;
+    const key = [f.flightCallsign, other].sort().join(" ") + " " + sharedFile;
+    if (!pairs.has(key)) console.log(`TCAS: ${f.flightCallsign} and ${other} both wrote ${sharedFile} in the last 5 min.`);
+    pairs.add(key);
+  }
 } else {
   console.error("usage: tracon start [--no-open] | tracon status");
   process.exit(2);

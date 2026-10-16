@@ -82,7 +82,7 @@ Tracon maps the chaos of multi-agent development directly to airport radar opera
 
 ## 🎛️ Dual-Interface Experience (planned)
 
-Built today: the fleet radar (one live card per session), the per-flight Execution DAG with latency and token badges, and Holding Pattern alerts (chime plus system notification). The File Attention Heatmap, Branch Cost diffs, the Ops Lounge and the Bingo Fuel / TCAS warnings below are not built yet (see [judge.md](judge.md)).
+Built today: the fleet radar (one live card per session), the per-flight Execution DAG with latency and token badges, Holding Pattern alerts (chime plus system notification), TCAS file-collision warnings, and a quota gauge fed by a status-line usage mirror (`TRACON_QUOTA`). The File Attention Heatmap, Branch Cost diffs, the Ops Lounge and Bingo Fuel forecasting below are not built yet (see [judge.md](judge.md)).
 
 Tracon features a dual-mode presentation layer suited for both deep technical analysis and ambient side-monitor awareness:
 
@@ -104,7 +104,7 @@ Tracon features a dual-mode presentation layer suited for both deep technical an
 
 ## 🏗️ Technical Architecture
 
-Target architecture. Built today: scanner, tailer, normalizer, WebSocket/REST server, the fleet cards, the execution DAG and the holding alerter. Not built: TCAS collision detector, quota calculator and the Ops Lounge. Layout: `packages/avalokita-engine` (engine), `packages/tracon-ui` (Flight Deck), `packages/tracon-cli` (`tracon start | status`).
+Target architecture. Built today: scanner, tailer, normalizer, WebSocket/REST server, the fleet cards, the execution DAG, the holding alerter, the TCAS collision detector (`collision.ts`) and the quota reader (`quota.ts`). Not built: burn-rate forecasting and the Ops Lounge. Layout: `packages/avalokita-engine` (engine), `packages/tracon-ui` (Flight Deck), `packages/tracon-cli` (`tracon start | status`).
 
 ```mermaid
 flowchart TD
@@ -180,6 +180,7 @@ scripts/check.sh                               # typecheck, read-only guard, tes
 
 Optional environment variables:
 - `TRACON_TIERS="BIZ=team_100,WORK=api_usage"`: the plan behind each Claude profile (suffix of `~/.claude-<suffix>`; `""` is `~/.claude`). Unlisted profiles show as `pro_20`.
+- `TRACON_QUOTA="HAT=/path/usage.md"`: a usage mirror per profile, in the format `~/.claude-hat/statusline-usage.py` writes. The card's QUOTA gauge shows its 5-hour percentage until that window resets; profiles without a mirror stay `n/a`. TRACON only reads the file.
 - `TRACON_WINDOW_MIN=30`: how long after its last transcript line a session stays on the radar.
 - `TRACON_PORT=4040` (also read by `tracon status`), and `CLAUDE_CONFIG_DIR` (also scanned).
 
@@ -214,7 +215,7 @@ HOLDING: CL-GRR-0F3E in /Users/you/project is waiting on you.
   - [ ] Real-time character animations matching active tools (reading, writing, shell).
   - [ ] Subagents orbiting parent flight consoles.
 - [ ] **Phase 4: Advanced Airspace Safety**
-  - [ ] TCAS file conflict detector (preventing parallel agent git collisions).
+  - [x] TCAS file conflict detector: two sessions writing the same file within 5 minutes get a red card and a `TCAS:` line in `tracon status` (a subagent's writes count as its parent's).
   - [ ] Rate-limit trajectory predictions for $20 Pro vs $100 Team accounts.
 
 ---

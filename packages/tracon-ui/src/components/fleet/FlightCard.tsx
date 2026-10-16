@@ -1,4 +1,4 @@
-import { FileText, PenLine, Terminal, Users, Workflow, Wrench, type LucideIcon } from "lucide-react";
+import { FileText, PenLine, Terminal, TriangleAlert, Users, Workflow, Wrench, type LucideIcon } from "lucide-react";
 import type { FlightPacket, FlightState, ToolAction } from "../../../../avalokita-engine/src/types.ts";
 
 export const tokens = (n: number) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(1)}k` : String(n));
@@ -39,7 +39,8 @@ export function FlightCard({ f, maxBurn, selected, onTrace }: { f: FlightPacket;
   const st = STATE[f.flightState];
   const Icon = f.activeTool ? ACTION_ICON[f.activeTool.action] : null;
   const fuel = f.fuelMetrics;
-  const ring = f.flightState === "holding" ? "border-amber-400 shadow-[0_0_24px_-6px] shadow-amber-400" : f.flightState === "aborted" ? "border-red-800" : selected ? "border-emerald-500" : "border-slate-800";
+  const tcas = f.collisionWarning;
+  const ring = f.flightState === "holding" ? "border-amber-400 shadow-[0_0_24px_-6px] shadow-amber-400" : tcas ? "border-red-500" : f.flightState === "aborted" ? "border-red-800" : selected ? "border-emerald-500" : "border-slate-800";
   return (
     <article className={`min-w-0 rounded-lg border bg-slate-900/70 p-4 ${ring}`}>
       <div className="flex items-start justify-between gap-2">
@@ -71,6 +72,20 @@ export function FlightCard({ f, maxBurn, selected, onTrace }: { f: FlightPacket;
           <span className="text-slate-600">no tool in flight</span>
         )}
       </div>
+
+      {tcas && (
+        <div role="alert" className="mt-2 flex gap-2 rounded border border-red-700/70 bg-red-950/40 px-2 py-1.5 font-mono text-xs text-red-200">
+          <TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0 text-red-400" aria-hidden />
+          <div className="min-w-0">
+            <div>
+              <span className="font-semibold text-red-300">TCAS</span> · {tcas.conflictingFlight} also wrote this file in the last 5 min
+            </div>
+            <div className="truncate text-red-300/80" title={tcas.sharedFile}>
+              {tcas.sharedFile}
+            </div>
+          </div>
+        </div>
+      )}
 
       {f.subagents.length > 0 && (
         <ul className="mt-2 flex flex-wrap gap-1" aria-label="subagents">

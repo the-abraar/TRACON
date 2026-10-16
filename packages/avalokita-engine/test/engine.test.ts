@@ -4,6 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
 import { Airspace, parseTiers } from "../src/airspace.ts";
+import { COLLISION_WINDOW_MS, findCollisions } from "../src/collision.ts";
+import { parseQuotaFiles, readQuota } from "../src/quota.ts";
 import { Flight, HOLD_AFTER_MS, MAX_TOOLS_PER_TURN, MAX_TURNS, toolAction } from "../src/normalizer.ts";
 import { parseAgyLine } from "../src/parsers/agy.ts";
 import { parseClaudeLine } from "../src/parsers/claude.ts";
@@ -121,11 +123,49 @@ test("trace stays bounded and re-points edges into trimmed nodes", () => {
   assert.equal(tools[2]!.parent, tools[1]!.id);
 });
 
+test("normalizer: a subagent that hands back its report lands, and its turn gets an end", () => {
+  const sub = fold([
+    { kind: "tool_use", ts: T0, tools: [{ id: "r", name: "Read", input: { file_path: "/w/a.ts" } }] },
+    { kind: "tool_result", ts: T0 + 1_000, toolUseIds: ["r"] },
+    { kind: "tool_use", ts: T0 + 2_000, tools: [{ id: "h", name: "SubagentHandback", input: {} }] },
+  ]);
+  assert.equal(sub.state(T0 + 2_500), "tool_executing");
+  sub.apply({ kind: "tool_result", ts: T0 + 3_000, toolUseIds: ["h"] });
+  assert.equal(sub.state(T0 + 3_000 + 10 * HOLD_AFTER_MS), "landed", "no lines follow a handback; it must not read as cruising forever");
+  assert.equal(sub.trace().find((n) => n.kind === "turn")!.end, T0 + 3_000);
+});
+
+test("TCAS: two flights writing one file within the window collide; old writes and a flight's own writes do not", () => {
+  const now = T0 + 60 * 60_000;
+  const w = (callsign: string, file: string, ago: number) => ({ callsign, file, ts: now - ago });
+  const hits = findCollisions([
+    w("CL-A", "/repo/a.ts", 60_000), w("CL-B", "/repo/a.ts", 30_000), // collide
+    w("CL-A", "/repo/b.ts", 10_000), w("CL-A", "/repo/b.ts", 5_000), // same flight twice: not a collision
+    w("CL-C", "/repo/c.ts", 1_000), w("CL-D", "/repo/c.ts", COLLISION_WINDOW_MS + 1), // CL-D's write is too old
+  ], now);
+  assert.deepEqual(Object.fromEntries(hits), {
+    "CL-A": { conflictingFlight: "CL-B", sharedFile: "/repo/a.ts" },
+    "CL-B": { conflictingFlight: "CL-A", sharedFile: "/repo/a.ts" },
+  });
+  const latest = findCollisions([w("CL-A", "/x", 200_000), w("CL-B", "/x", 190_000), w("CL-A", "/y", 2_000), w("CL-B", "/y", 1_000)], now);
+  assert.equal(latest.get("CL-A")!.sharedFile, "/y", "reports the most recent shared file");
+});
+
+test("Flight.writes lists recent write targets, resolving relative paths against the cwd", () => {
+  const f = fold([
+    { kind: "tool_use", ts: T0, cwd: "/repo", tools: [{ id: "1", name: "Edit", input: { file_path: "src/a.ts" } }] },
+    { kind: "tool_use", ts: T0 + 1_000, tools: [{ id: "2", name: "Read", input: { file_path: "/repo/b.ts" } }] },
+    { kind: "tool_use", ts: T0 + 2_000, tools: [{ id: "3", name: "Write", input: { file_path: "/repo/c.ts" } }] },
+  ]);
+  assert.deepEqual(f.writes(T0), [{ file: "/repo/src/a.ts", ts: T0 }, { file: "/repo/c.ts", ts: T0 + 2_000 }]);
+  assert.deepEqual(f.writes(T0 + 1_500), [{ file: "/repo/c.ts", ts: T0 + 2_000 }]);
+});
+
 test("toolAction classifies both runtimes' tool names", () => {
-  const m = Object.fromEntries(["Read", "Grep", "view_file", "Write", "Edit", "replace_file_content", "Bash", "run_command", "Agent", "Task", "invoke_subagent", "manage_task", "TodoWrite"].map((n) => [n, toolAction(n)]));
+  const m = Object.fromEntries(["Read", "Grep", "view_file", "Write", "Edit", "replace_file_content", "Bash", "run_command", "Agent", "Task", "invoke_subagent", "manage_task", "TodoWrite", "SubagentHandback"].map((n) => [n, toolAction(n)]));
   assert.deepEqual(m, {
     Read: "read", Grep: "read", view_file: "read", Write: "write", Edit: "write", replace_file_content: "write",
-    Bash: "bash", run_command: "bash", Agent: "subagent", Task: "subagent", invoke_subagent: "subagent", manage_task: "other", TodoWrite: "write",
+    Bash: "bash", run_command: "bash", Agent: "subagent", Task: "subagent", invoke_subagent: "subagent", manage_task: "other", TodoWrite: "write", SubagentHandback: "other",
   });
 });
 
@@ -193,6 +233,44 @@ test("airspace: discovers, tails and normalizes both runtimes end to end", () =>
   const landed = air.tick(now).find((p) => p.flightCallsign === "CL-BIZ-0000")!;
   assert.equal(landed.flightState, "landed");
   assert.notEqual(landed.id, cl!.id);
+});
+
+test("airspace TCAS: sessions writing the same file collide; a session and its own subagent do not", () => {
+  const home = mkdtempSync(join(tmp, "tcas-"));
+  const proj = join(home, ".claude", "projects", "-repo");
+  const edit = (ts: number, id: string, file: string, side = false) =>
+    JSON.stringify({ type: "assistant", isSidechain: side, timestamp: new Date(ts).toISOString(), cwd: "/repo", message: { id, content: [{ type: "tool_use", id, name: "Edit", input: { file_path: file } }] } }) + "\n";
+  const a = "aaaa0000-0000-0000-0000-000000000000", b = "bbbb0000-0000-0000-0000-000000000000";
+  mkdirSync(join(proj, a, "subagents"), { recursive: true });
+  writeFileSync(join(proj, `${a}.jsonl`), edit(T0, "a1", "/repo/own.ts"));
+  writeFileSync(join(proj, a, "subagents", "agent-s1.jsonl"), edit(T0 + 1_000, "s1", "/repo/own.ts", true) + edit(T0 + 2_000, "s2", "/repo/shared.ts", true));
+  writeFileSync(join(proj, `${b}.jsonl`), edit(T0 + 3_000, "b1", "/repo/shared.ts"));
+  const air = new Airspace({ home, windowMs: Number.MAX_SAFE_INTEGER, env: {} });
+  const byCs = Object.fromEntries(air.tick(T0 + 10_000).map((p) => [p.flightCallsign, p.collisionWarning]));
+  assert.deepEqual(byCs, {
+    "CL-AAAA": { conflictingFlight: "CL-BBBB", sharedFile: "/repo/shared.ts" }, // via its subagent; own.ts is not a collision
+    "CL-BBBB": { conflictingFlight: "CL-AAAA", sharedFile: "/repo/shared.ts" },
+  });
+  assert.deepEqual(air.tick(T0 + 3_000 + COLLISION_WINDOW_MS + 1).map((p) => p.collisionWarning), [undefined, undefined], "clears after the window");
+});
+
+test("quota: reads the 5-hour percentage from a usage mirror until its window resets", () => {
+  assert.deepEqual(parseQuotaFiles("hat=/u/a.md, =/u/b.md,bad"), new Map([["HAT", "/u/a.md"], ["", "/u/b.md"]]));
+  const file = join(tmp, "usage.md");
+  const at = Date.parse("2026-10-15T18:28:03+06:00");
+  writeFileSync(file, `# Claude usage (mirror)\n\n**5-hour window: 37% used.** Resets 2026-10-15 21:40 +06 (in 3h11m).\n**7-day window: 12% used.** Resets 2026-10-22 08:00 +06 (in 157h31m).\n\nUpdated: 2026-10-15 18:28:03 +06 (epoch ${at / 1000})\n`);
+  assert.equal(readQuota(file, at + 60_000), 37);
+  assert.equal(readQuota(file, Date.parse("2026-10-15T21:40:00+06:00")), undefined, "window reset: stale");
+  assert.equal(readQuota(join(tmp, "missing.md"), at), undefined);
+  writeFileSync(file, `**5-hour window: 5% used.** Resets n/a.\nUpdated: x (epoch ${at / 1000})\n`);
+  assert.equal(readQuota(file, at + 4 * 3600_000), 5, "no reset time: falls back to the reading's age");
+  assert.equal(readQuota(file, at + 6 * 3600_000), undefined);
+
+  const home = fakeHome();
+  writeFileSync(file, `**5-hour window: 42% used.** Resets 2026-01-01 03:00 +00 (in 3h).\nUpdated: x (epoch ${T0 / 1000})\n`);
+  const air = new Airspace({ home, windowMs: Number.MAX_SAFE_INTEGER, quota: `BIZ=${file}`, env: {} });
+  const cl = air.tick(T0 + 6_000).find((p) => p.flightCallsign === "CL-BIZ-0000")!;
+  assert.equal(cl.fuelMetrics.quotaPercentage, 42);
 });
 
 test("airspace drops sessions outside the activity window", () => {
