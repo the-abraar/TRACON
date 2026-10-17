@@ -83,3 +83,16 @@ test("questionAnswer: picks and Other text joined like Claude Code's dialog; und
   assert.equal(permissionTarget({ ...d, kind: "permission", tool: "Bash", input: { command: "ls -la", description: "List" } }), "ls -la");
   assert.equal(permissionTarget({ ...d, kind: "permission", tool: "X", input: { a: 1 } }), '{\n "a": 1\n}');
 });
+
+test("savePairToken: takes the token from a pasted pair link or bare token, rejects anything else", async () => {
+  const store = new Map<string, string>();
+  Object.defineProperty(globalThis, "localStorage", { configurable: true, value: { setItem: (k: string, v: string) => store.set(k, v), getItem: (k: string) => store.get(k) ?? null } });
+  const { savePairToken, token } = await import("../src/lib/remote.ts");
+  const t = "ab".repeat(32);
+  assert.equal(savePairToken(` https://mac.tail0.ts.net/#pair=${t}\n`), true);
+  assert.equal(token(), t);
+  assert.equal(savePairToken("cd".repeat(32)), true);
+  assert.equal(token(), "cd".repeat(32));
+  for (const bad of ["", "https://mac.tail0.ts.net/", `#pair=${t}x`, "ab".repeat(31), `x${t}`]) assert.equal(savePairToken(bad), false, bad);
+  assert.equal(token(), "cd".repeat(32));
+});

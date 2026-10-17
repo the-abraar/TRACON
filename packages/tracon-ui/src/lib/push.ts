@@ -7,8 +7,9 @@ const supported = () => "serviceWorker" in navigator && "PushManager" in window 
 export async function pushStatus(): Promise<PushStatus> {
   if (!supported()) return "unsupported";
   if (Notification.permission === "denied") return "blocked";
-  const reg = await navigator.serviceWorker.getRegistration();
-  return Notification.permission === "granted" && (await reg?.pushManager.getSubscription()) ? "on" : "off";
+  const sub = Notification.permission === "granted" && (await (await navigator.serviceWorker.getRegistration())?.pushManager.getSubscription());
+  // re-send on every open: "on" must mean the engine has it, not just this device (the engine dedupes by endpoint)
+  return sub && (await post("/api/push/subscribe", sub.toJSON()).then((r) => r.ok, () => false)) ? "on" : "off";
 }
 
 /** Asks for notification permission and registers this device for the engine's web push. On iOS it works only from the Home Screen app. */

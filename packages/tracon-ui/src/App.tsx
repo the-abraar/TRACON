@@ -5,7 +5,35 @@ import { DecisionInbox } from "./components/decisions/DecisionInbox.tsx";
 import { FleetBar } from "./components/fleet/FleetBar.tsx";
 import { FlightCard } from "./components/fleet/FlightCard.tsx";
 import { FlightDag } from "./components/radar/FlightDag.tsx";
-import { isLocal, token, wsUrl } from "./lib/remote.ts";
+import { isLocal, savePairToken, token, wsUrl } from "./lib/remote.ts";
+
+/** Pairs this device from a pasted `tracon pair` link: the iOS Home Screen app cannot open the link itself. */
+function PairForm() {
+  const [bad, setBad] = useState(false);
+  return (
+    <form
+      className="flex flex-col items-center gap-3"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (savePairToken(new FormData(e.currentTarget).get("link") as string)) location.reload();
+        else setBad(true);
+      }}
+    >
+      <span>This device is not paired. Run `tracon pair` on the Mac and paste its link here.</span>
+      <input
+        name="link"
+        aria-label="Pair link"
+        autoComplete="off"
+        placeholder="https://…/#pair=…"
+        className="w-full max-w-md rounded border border-slate-700 bg-slate-900 px-3 py-2 text-base text-slate-200"
+      />
+      {bad && <span className="text-amber-300">That doesn't contain a pair token.</span>}
+      <button type="submit" className="min-h-10 rounded border border-slate-700 px-4 text-slate-200 hover:border-amber-400">
+        PAIR
+      </button>
+    </form>
+  );
+}
 
 /** Live airspace from the engine; each socket message is the full snapshot: flights, held decisions, away state. */
 function useAirspace() {
@@ -70,13 +98,13 @@ export default function App() {
         <DecisionInbox decisions={decisions} focus={focus} />
         {tracedFlight && <FlightDag key={tracedFlight.flightCallsign} flight={tracedFlight} onClose={() => setTraced(undefined)} />}
         {flights.length === 0 ? (
-          <p className="mt-24 text-center font-mono text-sm text-slate-500">
+          <div className="mt-24 text-center font-mono text-sm text-slate-500">
             {online
               ? "Airspace clear: no agent session active in the last 30 minutes."
               : !isLocal() && !token()
-                ? "This device is not paired. Run `tracon pair` on the Mac and open its link here."
+                ? <PairForm />
                 : "Connecting to the Avalokita Engine..."}
-          </p>
+          </div>
         ) : (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {flights.map((f) => (

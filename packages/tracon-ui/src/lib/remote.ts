@@ -4,14 +4,22 @@ const KEY = "tracon.token";
 
 /** Saves the token of a #pair=<token> link and takes it out of the address bar. */
 export function takePairToken(): void {
-  const m = /^#pair=([0-9a-f]{64})$/.exec(location.hash);
-  if (!m) return;
+  if (!/^#pair=[0-9a-f]{64}$/.test(location.hash)) return;
+  savePairToken(location.hash);
+  history.replaceState(null, "", location.pathname);
+}
+
+/** Saves the token from a pasted pair link (or the bare token). The Home Screen app on iOS has its own storage and no
+ * address bar, so pasting is how it pairs. Returns false when the text holds no token or storage is blocked. */
+export function savePairToken(text: string): boolean {
+  const m = /(?:^|#pair=)([0-9a-f]{64})$/.exec(text.trim());
+  if (!m) return false;
   try {
     localStorage.setItem(KEY, m[1]!);
+    return true;
   } catch {
-    /* storage blocked: this device cannot stay paired */
+    return false; // storage blocked: this device cannot stay paired
   }
-  history.replaceState(null, "", location.pathname);
 }
 
 export function token(): string | undefined {

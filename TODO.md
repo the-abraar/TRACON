@@ -1,23 +1,36 @@
 # TODO
 
-## Partner app (built 2026-10-17, not committed)
+## Partner app (built and committed 2026-10-17 as 94d03fa; fixes since then not committed)
 
-The partner app is built and working, but you have four setup steps before you can use it from outside. Every flow worked against real Claude Code sessions, but push on a real phone and `tracon pair` with Tailscale are untested, since Tailscale isn't installed on this Mac. Design and spike results: PLAN.md section 8.
+Setup is done, apart from push on the phone. Design and spike results: PLAN.md section 8.
 
-### Setup
-- [ ] Install Tailscale on the Mac and your devices.
-- [ ] Restart `tracon`. The one running on port 4040 is the old version.
-- [ ] Run `tracon hooks install`, which adds two hooks to each profile's `settings.json` and backs each file up first.
-- [ ] Run `tracon pair` and open the link it prints on each device. On iPhone, Add to Home Screen first, or push notifications won't work.
+### Start here tomorrow
+- [ ] **Is the engine still running?** It was started by hand (`nohup node packages/tracon-cli/bin/tracon.js start --no-open`), with nothing set to restart it after a reboot or crash. Check with `lsof -nP -iTCP:4040 -sTCP:LISTEN`. If nothing's listening, start it again. `tailscale serve` survives a restart; check it with `tailscale serve status`.
+- [ ] **Push is blocked: the engine has no subscription from the iPhone.** `~/.config/tracon/subscriptions.json` is `[]`, even though the app's notifications button shows "on".
+  - Known so far: the engine side works. A probe POST to `/api/push/subscribe` over the tailnet was saved, then removed. The button's "on" used to reflect only the phone's own registration, so it never showed whether the engine had it.
+  - Fix in place, not committed: `pushStatus()` in `packages/tracon-ui/src/lib/push.ts` now re-sends the device's subscription on every open, so "on" means the engine has it.
+  - To do: swipe the TRACON Home Screen app closed, reopen it, then run `cat ~/.config/tracon/subscriptions.json`.
+  - Still `[]`? The phone isn't sending at all. Connect the iPhone to the Mac and use Safari > Develop > iPhone to read the web app's console and network log. Suspects: the token missing in the Home Screen app, or `pushManager.subscribe` failing on iOS. If nothing helps, toggle notifications off and on in iOS Settings > Notifications > TRACON.
+- [ ] **Then test a real push:** run `tracon away on`, start a Claude session that asks a question (AskUserQuestion), lock the phone, and wait for the notification. Tap it, answer, and check that the session carries on. Run `tracon away auto` afterwards.
 
-### Still to verify
-- [ ] Push on a real iPhone or Android phone.
-- [ ] `tracon pair` itself.
+### Not verified yet
+- [ ] Push on a real phone (blocked by the item above).
+- [ ] The paste-the-link pairing form on the iPhone Home Screen app. You paired, so it probably worked, but nobody checked which way the pairing happened. Added because iOS Home Screen apps have their own storage, separate from Safari, so the `#pair=` token Safari saved never reached the app (every request got a 401).
+- [ ] A plan approval and a permission prompt answered from the phone. They were tested only from the "phone" port on the Mac, never on a real device.
+- [ ] Do sessions disappear when they've been stuck a long time? The app's empty screen says "no agent session active in the last 30 minutes", and `HOLD_MAX_MS` in `decisions.ts` is about 58 minutes. Check whether a session holding longer than that still shows in the inbox, the app and `tracon status`, and what happens to its prompt.
 - [ ] Answering Antigravity prompts. You can see them but not answer them yet.
 
 ### Housekeeping
-- [ ] Commit the partner app work.
+- [ ] Commit the fixes made after 94d03fa: `App.tsx` (pair form), `lib/remote.ts` (`savePairToken`), `lib/push.ts` (re-send the subscription), and `test/ui.test.ts` (a `savePairToken` test). `scripts/check.sh` passes all 7 steps.
+- [ ] Make the engine start at login (a launchd agent, or the Homebrew service) so the phone doesn't go dark after a reboot.
+- [ ] Put `tracon` on PATH (`npm link` in `packages/tracon-cli`, or the Homebrew install from the README). For now it's `node packages/tracon-cli/bin/tracon.js`.
 - [ ] Decide what to do with the untracked `dev/agy_autostrategy.md`. It's from 14:50 on 2026-10-17, before this work started, and was left alone.
+
+### Done
+- [x] Tailscale on the Mac (`abraars-macbook-pro`, 100.124.124.14) and the iPhone 15 (100.81.75.72).
+- [x] `tracon hooks install`: all 5 profiles, backups in `~/.config/tracon/backups`, and `ensure_caveman.py check` still ALL GOOD (it won't strip them). Undo with `tracon hooks uninstall`.
+- [x] Tailscale Serve enabled and running: `https://abraars-macbook-pro.tail09801e.ts.net/` → `127.0.0.1:4041`. Turn it off with `tailscale serve --https=443 off`.
+- [x] `tracon pair`: the iPhone opened the link and sees the app. The token hasn't been rotated; rotate it with `tracon pair --rotate` if the link leaks.
 
 ### Notes
 
