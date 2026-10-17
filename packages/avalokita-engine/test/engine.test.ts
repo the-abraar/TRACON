@@ -11,6 +11,7 @@ import { parseAgyLine } from "../src/parsers/agy.ts";
 import { parseClaudeLine } from "../src/parsers/claude.ts";
 import { claudeProfiles } from "../src/scanners/claude.ts";
 import { startEngine } from "../src/server.ts";
+import { State } from "../src/state.ts";
 import { Tailer } from "../src/tailers/tailer.ts";
 import type { ParsedEvent } from "../src/types.ts";
 import { WebSocket } from "ws";
@@ -281,7 +282,7 @@ test("airspace drops sessions outside the activity window", () => {
 
 test("server: /api/flights snapshot, live WebSocket push, foreign origins refused", async () => {
   const home = fakeHome();
-  const eng = await startEngine({ port: 0, home, windowMs: Number.MAX_SAFE_INTEGER, uiDist: join(tmp, "no-ui"), env: {} });
+  const eng = await startEngine({ port: 0, remotePort: 0, home, windowMs: Number.MAX_SAFE_INTEGER, uiDist: join(tmp, "no-ui"), stateDir: mkdtempSync(join(tmp, "state-")), env: {} });
   try {
     const snap = (await (await fetch(`${eng.url}/api/flights`)).json()) as { flights: unknown[] };
     assert.equal(snap.flights.length, 2);
@@ -312,6 +313,104 @@ test("server: /api/flights snapshot, live WebSocket push, foreign origins refuse
     const evil = new WebSocket(eng.url.replace("http", "ws") + "/ws", { origin: "https://evil.example" });
     const outcome = await new Promise((ok) => evil.on("open", () => ok("open")).on("error", () => ok("refused")));
     assert.equal(outcome, "refused");
+  } finally {
+    eng.close();
+  }
+});
+
+/** Polls `get` until it returns something, for up to 8 s (the engine's poll runs every 2 s). */
+async function waitFor<T>(get: () => Promise<T | undefined>, what: string): Promise<T> {
+  for (let i = 0; i < 80; i++) {
+    const v = await get();
+    if (v !== undefined) return v;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  throw new Error(`timed out waiting for ${what}`);
+}
+
+test("server: hooks hold decisions while away, a paired device answers, the remote port is token-gated", async () => {
+  const home = fakeHome();
+  const stateDir = mkdtempSync(join(tmp, "state-"));
+  let idle = 0;
+  const eng = await startEngine({ port: 0, remotePort: 0, home, windowMs: Number.MAX_SAFE_INTEGER, uiDist: join(tmp, "no-ui"), stateDir, idle: async () => idle, env: {} });
+  const sid = "0000aaaa-1111-2222-3333-444455556666";
+  const tp = join(home, ".claude-biz", "projects", "-work-demo", `${sid}.jsonl`);
+  const post = (base: string, path: string, body: unknown, headers: Record<string, string> = {}, signal?: AbortSignal) =>
+    fetch(base + path, { method: "POST", headers: { "content-type": "application/json", ...headers }, body: JSON.stringify(body), ...(signal ? { signal } : {}) });
+  const snapshot = async () => (await (await fetch(`${eng.url}/api/flights`)).json()) as any;
+  const held = (n: number) => waitFor(async () => ((await snapshot()).decisions.length === n ? snapshot() : undefined), `${n} held decisions`);
+  const ask = {
+    hook_event_name: "PreToolUse",
+    session_id: sid,
+    transcript_path: tp,
+    cwd: "/work/demo",
+    tool_name: "AskUserQuestion",
+    tool_input: { questions: [{ question: "Pick", header: "P", multiSelect: false, options: [{ label: "A" }, { label: "B" }] }] },
+  };
+  try {
+    // present: the hook returns at once with no decision, so the terminal asks as usual
+    const r0 = await post(eng.url, "/hook/pre-tool-use", ask);
+    assert.equal(r0.status, 200);
+    assert.equal(await r0.text(), "");
+
+    // away: the hook is held, shows in the snapshot, and its flight is holding for certain
+    assert.equal((await post(eng.url, "/api/away", { mode: "on" })).status, 200);
+    const pending = post(eng.url, "/hook/pre-tool-use", ask);
+    const snap = await held(1);
+    const d = snap.decisions[0];
+    assert.equal(d.callsign, "CL-BIZ-0000");
+    assert.equal(d.kind, "question");
+    assert.equal(snap.flights.find((f: any) => f.flightCallsign === "CL-BIZ-0000").flightState, "holding");
+    assert.deepEqual(snap.away, { mode: "on", away: true });
+
+    // remote port: nothing works before pairing or with a wrong token, and /hook is never reachable
+    assert.equal((await fetch(`${eng.remoteUrl}/api/flights`)).status, 401);
+    const token = new State(stateDir).rotateToken();
+    const auth = { authorization: `Bearer ${token}` };
+    assert.equal((await fetch(`${eng.remoteUrl}/api/flights`, { headers: { authorization: "Bearer nope" } })).status, 401);
+    assert.equal((await post(eng.remoteUrl, "/hook/pre-tool-use", ask, auth)).status, 404);
+    assert.equal((await post(eng.remoteUrl, "/api/answer", { id: d.id, kind: "question", answers: {} }, auth)).status, 400);
+    assert.equal((await post(eng.remoteUrl, "/api/answer", { id: d.id, kind: "question", answers: { Pick: "B" } }, auth)).status, 200);
+    const reply = (await (await pending).json()) as any;
+    assert.equal(reply.hookSpecificOutput.permissionDecision, "allow");
+    assert.deepEqual(reply.hookSpecificOutput.updatedInput.answers, { Pick: "B" });
+    assert.equal((await post(eng.remoteUrl, "/api/answer", { id: d.id, kind: "question", answers: { Pick: "B" } }, auth)).status, 409);
+
+    const opens = (url: string) =>
+      new Promise((ok) => {
+        const ws = new WebSocket(url).on("message", () => (ok("open"), ws.close())).on("error", () => ok("refused"));
+      });
+    assert.equal(await opens(`${eng.remoteUrl.replace("http", "ws")}/ws`), "refused");
+    assert.equal(await opens(`${eng.remoteUrl.replace("http", "ws")}/ws?t=${token}`), "open");
+
+    // a page from another site cannot answer or reach the hooks through the local port
+    assert.equal((await post(eng.url, "/api/away", { mode: "off" }, { origin: "https://evil.example" })).status, 403);
+    assert.equal((await post(eng.url, "/hook/pre-tool-use", ask, { origin: "https://evil.example" })).status, 404);
+
+    // Claude Code closing the request (session ended) drops the decision
+    const ac = new AbortController();
+    post(eng.url, "/hook/pre-tool-use", ask, {}, ac.signal).catch(() => {});
+    await held(1);
+    ac.abort();
+    await held(0);
+
+    // auto: away while idle; back at the keyboard, held questions go back to the terminal
+    idle = 600;
+    await post(eng.url, "/api/away", { mode: "auto" });
+    const back = post(eng.url, "/hook/pre-tool-use", ask);
+    await held(1);
+    idle = 0;
+    assert.equal(await (await back).text(), "");
+    assert.deepEqual((await snapshot()).away, { mode: "auto", away: false });
+
+    // permission prompts are held even when present (they race the terminal's own dialog); once the transcript shows
+    // the call answered at the terminal, the hold is let go
+    const perm = post(eng.url, "/hook/permission-request", { ...ask, hook_event_name: "PermissionRequest", tool_name: "Bash", tool_input: { description: "Run tests", command: "npm test TOKEN=abc123" } });
+    await held(1);
+    await new Promise((r) => setTimeout(r, 2200)); // one sweep sees the call still waiting
+    appendFileSync(tp, lines("claude/session.jsonl")[9] + "\n");
+    assert.equal(await (await perm).text(), "");
+    await held(0);
   } finally {
     eng.close();
   }

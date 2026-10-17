@@ -3,6 +3,7 @@ import "@xyflow/react/dist/style.css";
 import { X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { FlightPacket, TraceNode } from "../../../../avalokita-engine/src/types.ts";
+import { api } from "../../lib/remote.ts";
 import { tokens } from "../fleet/FlightCard.tsx";
 import { duration, layoutTrace, type DagNode } from "./layout.ts";
 
@@ -46,7 +47,7 @@ export function FlightDag({ flight, onClose }: { flight: FlightPacket; onClose: 
   const [error, setError] = useState(false);
   useEffect(() => {
     let live = true;
-    fetch(`/api/trace?flight=${encodeURIComponent(flight.flightCallsign)}`)
+    api(`/api/trace?flight=${encodeURIComponent(flight.flightCallsign)}`)
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
       .then((d: { nodes: TraceNode[] }) => live && (setTrace(d.nodes), setError(false)))
       .catch(() => live && setError(true));

@@ -52,6 +52,23 @@ Built and judged 2026-10-16. I read PLAN.md, findings.md, README.md and combo_of
 - **Built: quota source** (`quota.ts`, `TRACON_QUOTA="HAT=/path/usage.md"`). Reads the 5-hour percentage from a statusline-usage.py mirror until its window resets. Only the `hat` profile writes a mirror today, and its last reading (15 Oct) has expired, so the gauge still reads n/a until that status line runs again.
 - Proof: `scripts/check.sh` passes all 7 steps; 21 tests (6 new, 2 of them fail on the old normalizer).
 
+## Update (2026-10-17, partner app)
+
+- **Built: the Partner App** (PLAN.md section 8). Held `AskUserQuestion`, plan approvals and permission prompts from every Claude profile appear on any paired device (PWA over Tailscale, with web push), and the answer goes back to the waiting session.
+- **Gap 1 narrowed**: with the hooks installed, a held question, plan or permission makes its flight `holding` for certain; the 60 s heuristic remains only for sessions without the hooks and for agy.
+- **Gap 2 narrowed**: web push reaches devices with the deck closed (only while away).
+- Proof:
+  - `scripts/check.sh` passes all 7 steps with 34 tests.
+  - Against real Claude Code 2.1.302 in a scratch project:
+    - A question was answered via the token-gated remote port, and Claude received "Green / Olives, Basil".
+    - A remote plan approval was followed by a remote Bash allow, and the file was created.
+    - A held question went back to the terminal on "at desk": the dialog appeared only after the release.
+    - A permission answered at the terminal was released from the inbox 2.6 s later.
+  - Web push decrypted correctly from a fake HTTPS push service, and a 410 subscription was dropped.
+  - Headless Chrome at 375 px rendered the deck, and its real buttons answered all three kinds.
+  - The bun binary serves the service worker, manifest and icons.
+- Not verified: push on a physical iPhone or Android (headless Chrome denies notifications), `tracon pair` with Tailscale installed (it isn't on this Mac), and the time from a hook POST to the push arriving on a device.
+
 ## Next steps
 
 1. Catch one real Claude permission prompt and one agy approval with the engine running, and record what `sessions/<pid>.json` and the agy transcript contain at that moment. Replace the 60 s heuristic with that signal where it exists.

@@ -18,9 +18,9 @@ step() { # name cmd...
 install() { [ -d node_modules ] || npm ci --no-audit --no-fund; }
 stray() { ! find . \( -name node_modules -o -name .git -o -name dist -o -name .tmp.driveupload \) -prune -o \
   -type f \( -name '*-e' -o -name '*.orig' -o -name '*.rej' -o -name '*.bak' \) -print | grep .; }
-read_only() { # the engine must never write, move, lock or delete anything in ~/.claude* or ~/.gemini
+read_only() { # the engine must never write, move, lock or delete anything in ~/.claude* or ~/.gemini; state.ts writes only ~/.config/tracon
   ! grep -n -E '\b(writeFile|appendFile|mkdir|rmSync|rm\(|unlink|rename|copyFile|ftruncate|truncateSync|chmod|chown|createWriteStream|utimes|symlink)' \
-    -r packages/avalokita-engine/src
+    -r --exclude=state.ts packages/avalokita-engine/src
 }
 
 step "install" install

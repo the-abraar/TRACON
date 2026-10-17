@@ -56,3 +56,30 @@ test("newlyHolding: alerts on entry into holding, once per cooldown", () => {
   assert.deepEqual(newlyHolding(flapped, [flight("A", "holding")], last, 1000 + ALERT_COOLDOWN_MS - 1), [], "inside the cooldown");
   assert.equal(newlyHolding(flapped, [flight("A", "holding")], last, 1000 + ALERT_COOLDOWN_MS).length, 1);
 });
+
+test("questionAnswer: picks and Other text joined like Claude Code's dialog; undefined until every question is answered", async () => {
+  const { questionAnswer, permissionTarget } = await import("../src/components/decisions/answer.ts");
+  const d = {
+    id: "d1",
+    callsign: "CL-T",
+    kind: "question" as const,
+    tool: "AskUserQuestion",
+    cwd: "/w",
+    createdAt: 0,
+    input: {
+      questions: [
+        { question: "Color", options: [{ label: "Red" }, { label: "Blue" }] },
+        { question: "Toppings", multiSelect: true, options: [{ label: "Cheese" }, { label: "Olives" }] },
+      ],
+    },
+  };
+  assert.equal(questionAnswer(d, { Color: ["Red"] }, {}), undefined);
+  assert.deepEqual(questionAnswer(d, { Color: ["Red"], Toppings: ["Cheese", "Olives"] }, { Toppings: " basil " }), {
+    id: "d1",
+    kind: "question",
+    answers: { Color: "Red", Toppings: "Cheese, Olives, basil" },
+  });
+  assert.deepEqual(questionAnswer(d, { Color: ["Red"], Toppings: [] }, { Color: "teal", Toppings: "none" }), { id: "d1", kind: "question", answers: { Color: "teal", Toppings: "none" } });
+  assert.equal(permissionTarget({ ...d, kind: "permission", tool: "Bash", input: { command: "ls -la", description: "List" } }), "ls -la");
+  assert.equal(permissionTarget({ ...d, kind: "permission", tool: "X", input: { a: 1 } }), '{\n "a": 1\n}');
+});

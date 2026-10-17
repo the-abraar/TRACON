@@ -215,3 +215,36 @@ Choices the plan left open, and where findings.md or the real data on this machi
 | Durations | A node's end is clamped to its start | Some transcripts append lines stamped earlier than the line before |
 | DAG layout | One column per turn, children stacked below; no layout library (no dagre/elk). Opens zoomed on the six most recent nodes | Turn sequence is linear, so a column layout is enough |
 | Alerter (p2_3) | In the Flight Deck: WebAudio two-tone chime plus the browser `Notification` API (macOS Notification Center). Opt-in via the ALERTS toggle (stored in `localStorage`), once per flight per 2 min, tab title shows the holding count | Audio and notifications both need a user gesture or permission in the browser; the engine stays a read-only observer with no `osascript` |
+
+## 8. Partner App (built 2026-10-17)
+
+A cross-platform partner app that lists held decisions and answers them from anywhere, so a long session at home keeps going while you are out. Chosen with the owner: build it in TRACON (one inbox for every profile) rather than per-session Remote Control, reach the Mac over Tailscale, and make the client the Flight Deck as an installable PWA.
+
+**Spike (Claude Code 2.1.302, interactive sessions in a scratch project with project-level HTTP hooks):**
+
+| Check | Result |
+|---|---|
+| AskUserQuestion answered by PreToolUse `allow` + `updatedInput.answers` | Works; multi-select as `"Cheese, Olives"`, shown as "User answered Claude's questions" |
+| ExitPlanMode via PreToolUse | `allow` + `updatedInput` approves ("User approved Claude's plan"); `deny` + reason rejects, Claude revises and re-presents |
+| PermissionRequest `allow` / `deny` | Works ("Allowed by PermissionRequest hook"); input has no `tool_use_id` |
+| PermissionRequest for AskUserQuestion | Does not fire (only PreToolUse) |
+| Does the terminal wait for the hook? | PreToolUse: yes, no dialog until the hook replies. PermissionRequest: **no**, the dialog shows at once and whichever answers first wins |
+| Terminal answers first | Claude does **not** close the hook request; it stays open until the hook replies |
+| Session killed | The hook request closes |
+| Empty 200 reply, or engine down | The normal terminal dialog appears |
+| `timeout: 3600` | Accepted |
+| `claude -p` | No AskUserQuestion tool, so headless sessions have nothing to answer |
+
+| Topic | Decision | Why |
+|---|---|---|
+| Mechanism | Two HTTP hooks per profile (`tracon hooks install`): PreToolUse `AskUserQuestion\|ExitPlanMode` and PermissionRequest `*`, both to `127.0.0.1:4040/hook/*`, timeout 3600 s | No script to install; engine down = connection error = normal prompt |
+| Away mode | Questions and plans are held only while away (`auto` = 3 min HID idle via `ioreg`, or pinned on/off). Becoming present releases them with an empty reply, so the terminal asks | They block the terminal while held; you must never be stuck at the desk |
+| Permission holds | Always held (they race the terminal dialog). Released when the transcript shows the matching call (name + input) waiting and then no longer waiting; swept right after holding and on every poll | Claude does not cancel the hook when you answer at the terminal; the transcript is the only signal |
+| Hold limit | Engine replies empty at 3500 s | Ahead of the 3600 s hook timeout, so the terminal always gets the prompt back |
+| Two listeners | `:4040` local (UI, API, hooks; POSTs with a foreign Origin refused). `:4041` remote (UI, API, socket behind the device token, never `/hook/*`), published by `tailscale serve` | A tailnet device must never be able to forge a hook reply; CSRF from websites on the Mac |
+| Token | 32 random bytes in `~/.config/tracon/token`, compared in constant time; `tracon pair --rotate` replaces it | One user, many devices; rotate = sign out everywhere |
+| Engine writes | `state.ts` only, only `~/.config/tracon/{token,vapid.json,subscriptions.json}`; `check.sh`'s read-only guard exempts just that file | Still never writes `~/.claude*` or `~/.gemini`; settings changes live in the CLI (`hooks.js`) with backups |
+| Push | `web-push` (VAPID + aes128gcm); new holds pushed only while away; 404/410 subscriptions dropped | Payload encrypted end to end through Apple/Google push |
+| Client | Flight Deck + manifest + push-only service worker (no offline cache); pairing via `#pair=<token>` saved to localStorage | One codebase for iOS, Android, web, Linux, Windows, macOS |
+| Wire format | Snapshot is now `{flights, decisions, away}`; a flight with a held decision is `holding` for certain | Answered-elsewhere and released decisions vanish from every device on the next message |
+| Not built | Answering agy prompts (view only), "always allow" rules, sending a new prompt to an idle session, store-packaged apps | agy approval format unverified; no hook can inject a prompt |

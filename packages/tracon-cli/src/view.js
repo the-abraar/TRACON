@@ -22,6 +22,14 @@ export function alertLines(flights) {
   return out;
 }
 
+/** One line per decision a hook is holding for an answer from a paired device. */
+export function heldLines(decisions = [], now = Date.now()) {
+  return decisions.map((d) => {
+    const what = d.kind === "question" ? d.input.questions?.[0]?.question : d.kind === "plan" ? "plan approval" : `${d.tool} ${d.input.command ?? d.input.file_path ?? ""}`.trim();
+    return `HELD: ${d.callsign} ${d.kind}: ${String(what ?? "").slice(0, 80)} (${Math.round((now - d.createdAt) / 60_000)}m)`;
+  });
+}
+
 /** One line per trace node: turns flush left, their tools and subagents indented. */
 export function traceLine(n) {
   const secs = n.end ? `${((n.end - n.start) / 1000).toFixed(1)}s` : "running";

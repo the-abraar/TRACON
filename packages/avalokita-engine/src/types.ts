@@ -73,3 +73,30 @@ export interface Usage {
   input: number;
   output: number;
 }
+
+/** A prompt a Claude Code hook holds open until a paired device answers it (POST /api/answer) or the terminal takes it back. */
+export interface Decision {
+  id: string;
+  callsign: string;
+  kind: "question" | "plan" | "permission";
+  tool: string;
+  /** the tool input as Claude Code sent it: AskUserQuestion questions, the ExitPlanMode plan, or the command/file to permit */
+  input: Record<string, unknown>;
+  cwd: string;
+  createdAt: number;
+}
+
+export type Answer =
+  | { id: string; kind: "question"; answers: Record<string, string> }
+  | { id: string; kind: "plan"; approve: boolean; feedback?: string }
+  | { id: string; kind: "permission"; allow: boolean; message?: string };
+
+/** auto = away after 3 idle minutes at the Mac's keyboard and mouse; on/off pin it. */
+export type AwayMode = "auto" | "on" | "off";
+
+/** Every WebSocket message and GET /api/flights. */
+export interface Snapshot {
+  flights: FlightPacket[];
+  decisions: Decision[];
+  away: { mode: AwayMode; away: boolean };
+}

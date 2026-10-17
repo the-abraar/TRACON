@@ -27,6 +27,9 @@ export function claudeProfiles(home: string, env: NodeJS.ProcessEnv = process.en
     .map((dir) => ({ dir, name: basename(dir).replace(/^\.?claude-?/, "").toUpperCase() }));
 }
 
+/** CL-<PROFILE>-<first 4 of session id>, or CL-<id4> for ~/.claude */
+export const claudeCallsign = (profile: string, sessionId: string) => `CL-${profile ? profile + "-" : ""}${sessionId.slice(0, 4).toUpperCase()}`;
+
 export interface Transcript {
   path: string;
   sessionId: string;

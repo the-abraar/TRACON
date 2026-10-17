@@ -1,14 +1,17 @@
 import { statSync } from "node:fs";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 import { COLLISION_WINDOW_MS, findCollisions, type FileWrite } from "./collision.ts";
 import { Flight, type LiveInfo } from "./normalizer.ts";
 import { parseQuotaFiles, readQuota } from "./quota.ts";
 import { parseAgyLine } from "./parsers/agy.ts";
 import { parseClaudeLine } from "./parsers/claude.ts";
 import { agyBrainDir, agyTasks, agyTranscripts } from "./scanners/agy.ts";
-import { claudeLiveSessions, claudeProfiles, claudeTranscripts, subagentRole, type Transcript } from "./scanners/claude.ts";
+import { claudeCallsign, claudeLiveSessions, claudeProfiles, claudeTranscripts, subagentRole, type Transcript } from "./scanners/claude.ts";
 import { Tailer } from "./tailers/tailer.ts";
 import type { AccountTier, FlightPacket, ParsedEvent, TraceNode } from "./types.ts";
+
+/** JSON with object keys sorted, so equal inputs compare equal whatever their key order. */
+const canon = (v: unknown) => JSON.stringify(v, (_k, x) => (x && typeof x === "object" && !Array.isArray(x) ? Object.fromEntries(Object.entries(x).sort(([a], [b]) => (a < b ? -1 : 1))) : x));
 
 const TIERS = new Set<AccountTier>(["pro_20", "team_100", "api_usage", "gemini"]);
 
@@ -59,12 +62,13 @@ export class Airspace {
     return [...claudeProfiles(this.home, this.env).flatMap((p) => [join(p.dir, "projects"), join(p.dir, "sessions")]), agyBrainDir(this.home)];
   }
 
-  tick(now = Date.now()): FlightPacket[] {
+  /** `held`: callsigns with a decision held open by a hook; they are holding for certain, whatever the transcript says. */
+  tick(now = Date.now(), held: ReadonlySet<string> = new Set()): FlightPacket[] {
     for (const p of claudeProfiles(this.home, this.env)) {
       const live = claudeLiveSessions(p.dir);
       const tier = this.tiers.get(p.name) ?? "pro_20";
       for (const t of claudeTranscripts(p.dir)) {
-        const callsign = `CL-${p.name ? p.name + "-" : ""}${t.sessionId.slice(0, 4).toUpperCase()}`;
+        const callsign = claudeCallsign(p.name, t.sessionId);
         this.consider(t, now, t.parentPath ? undefined : live.get(t.sessionId), () => ({
           t,
           flight: new Flight({ callsign, runtime: "claude-code", tier }),
@@ -111,6 +115,7 @@ export class Airspace {
         const pct = quota.get(quotaFile);
         if (pct !== undefined) p = { ...p, fuelMetrics: { ...p.fuelMetrics, quotaPercentage: pct } };
       }
+      if (held.has(p.flightCallsign)) p = { ...p, flightState: "holding" };
       const old = this.prev.get(p.flightCallsign);
       if (old && JSON.stringify({ ...old, id: "" }) === JSON.stringify({ ...p, id: "" })) p = old; // unchanged: keep its event id
       this.prev.set(p.flightCallsign, p);
@@ -118,6 +123,22 @@ export class Airspace {
       packets.push(p);
     }
     return packets.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+  }
+
+  /** The callsign of the Claude session that owns a transcript (a hook body gives its transcript_path and session_id). */
+  callsignFor(transcriptPath: string, sessionId: string): string {
+    const p = claudeProfiles(this.home, this.env).find((p) => transcriptPath.startsWith(p.dir + sep));
+    return claudeCallsign(p?.name ?? "", sessionId);
+  }
+
+  /** Whether a tool call with this name and input is still waiting for its result in a session or its subagents. */
+  waiting(transcriptPath: string, tool: string, input: Record<string, unknown>): boolean {
+    const want = canon(input);
+    for (const [path, e] of this.tracked) {
+      if (path !== transcriptPath && e.t.parentPath !== transcriptPath) continue;
+      for (const call of e.flight.pending.values()) if (call.name === tool && canon(call.input) === want) return true;
+    }
+    return false;
   }
 
   /** Execution DAG for one flight: its turns and tools, plus Claude subagents hung off the call that spawned them. */

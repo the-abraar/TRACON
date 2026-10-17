@@ -80,8 +80,9 @@ At the core of Tracon sits the **Avalokita Engine**, named after *Avalokiteśvar
 The Avalokita Engine is a small read-only background process that:
 1. **Watches**: Tails every Claude Code profile's session transcripts (`~/.claude*/projects/**/*.jsonl`), Claude Code's live-session pid files, and Antigravity brain transcripts, through FSEvents plus a 2-second poll. It never writes to those directories and needs no changes to your CLI tools.
 2. **Normalizes**: Converts Claude Code and Antigravity events into one `FlightPacket` per session (schema in PLAN.md section 3.3).
-3. **Broadcasts**: Pushes the whole airspace as `{"flights": FlightPacket[]}` over `ws://127.0.0.1:4040/ws` whenever it changes, and serves the same snapshot at `GET /api/flights`.
+3. **Broadcasts**: Pushes the whole airspace as `{"flights": FlightPacket[], "decisions": Decision[], "away": {...}}` over `ws://127.0.0.1:4040/ws` whenever it changes, and serves the same snapshot at `GET /api/flights`.
 4. **Traces**: Keeps a bounded execution DAG per flight (the last 40 turns, up to 100 tool calls each) and serves it on demand at `GET /api/trace?flight=<callsign>` as `{"nodes": TraceNode[]}` (schema in `packages/avalokita-engine/src/types.ts`).
+5. **Holds decisions** (opt-in, `tracon hooks install`): Claude Code's HTTP hooks send each question, plan approval and permission prompt to the engine, which holds it until a paired device answers or the terminal takes it back. See [Partner App](#-partner-app-answer-from-anywhere).
 
 ---
 
@@ -126,7 +127,7 @@ Tracon features a dual-mode presentation layer suited for both deep technical an
 
 ## 🏗️ Technical Architecture
 
-Target architecture. Built today: scanner, tailer, normalizer, WebSocket/REST server, the fleet cards, the execution DAG, the holding alerter, the TCAS collision detector (`collision.ts`) and the quota reader (`quota.ts`). Not built: burn-rate forecasting and the Ops Lounge. Layout: `packages/avalokita-engine` (engine), `packages/tracon-ui` (Flight Deck), `packages/tracon-cli` (`tracon [tui] | start | status`).
+Target architecture. Built today: scanner, tailer, normalizer, WebSocket/REST server, the fleet cards, the execution DAG, the holding alerter, the TCAS collision detector (`collision.ts`) and the quota reader (`quota.ts`). Not built: burn-rate forecasting and the Ops Lounge. Layout: `packages/avalokita-engine` (engine), `packages/tracon-ui` (Flight Deck, also the installable partner app), `packages/tracon-cli` (`tracon [tui] | start | status | away | pair | hooks`).
 
 ```mermaid
 flowchart TD
@@ -189,6 +190,7 @@ npm ci
 npm start                                      # builds the UI, starts the engine on 127.0.0.1:4040, opens the Flight Deck
 node packages/tracon-cli/bin/tracon.js         # terminal Flight Deck (TUI); reuses a running engine, else starts one
 node packages/tracon-cli/bin/tracon.js status  # terminal snapshot from a running engine
+node packages/tracon-cli/bin/tracon.js away on|off|auto  # who answers held prompts (see Partner App)
 scripts/build-binary.sh                        # standalone macOS binaries into release/ (needs bun)
 scripts/check.sh                               # typecheck, read-only guard, tests, UI build (--fast: skip tests and build)
 ```
@@ -207,6 +209,7 @@ Optional environment variables:
 - `TRACON_QUOTA="HAT=/path/usage.md"`: a usage mirror per profile, in the format `~/.claude-hat/statusline-usage.py` writes. The card's QUOTA gauge shows its 5-hour percentage until that window resets; profiles without a mirror stay `n/a`. TRACON only reads the file.
 - `TRACON_WINDOW_MIN=30`: how long after its last transcript line a session stays on the radar.
 - `TRACON_PORT=4040` (also read by `tracon status`), and `CLAUDE_CONFIG_DIR` (also scanned).
+- `TRACON_REMOTE_PORT=4041`: the listener `tailscale serve` publishes to paired devices. `TRACON_STATE=~/.config/tracon`: the device token, web-push keys, subscribed devices and settings backups.
 
 For UI work, `npm run dev:ui` serves the deck through Vite and proxies to a running engine.
 
@@ -220,6 +223,30 @@ SQ-20    CL-GRR-0F3E      claude-code  HOLDING         Edit                     
 SQ-AGY   AGY-37AC         antigravity  LANDED          -                          89.2k (0)
 HOLDING: CL-GRR-0F3E in /Users/you/project is waiting on you.
 ```
+
+---
+
+## 📱 Partner App (answer from anywhere)
+
+Leave long sessions running on the Mac at home, and answer them from your phone, a work laptop or any browser. The Flight Deck installs as an app (PWA) on iOS, Android, Windows, Linux and macOS, lists every held decision across all Claude profiles, and sends what you pick back to the waiting session, which carries on.
+
+**What can be answered**: `AskUserQuestion` (options, multi-select and your own "Other" text), plan approval (`ExitPlanMode`: approve, or reject with feedback) and tool permission prompts (allow, or deny with a reason). Antigravity sessions still show as holding but can only be answered at the Mac.
+
+**Who answers: away mode.** Questions and plans block the terminal while the engine holds them, so they are held only while you are *away*:
+- `AUTO` (default): away after 3 minutes without keyboard or mouse input on the Mac. Touch the Mac and every held question or plan goes back to its terminal dialog.
+- `AWAY` / `AT DESK`: pin it (`tracon away on|off|auto`, or the switch in the Fleet Bar).
+
+Permission prompts are always listed: Claude Code shows its own dialog at the same time, and whichever answers first wins. Each one is pushed to your devices only while you are away. If the engine is not running, every prompt behaves exactly as without TRACON.
+
+**Setup** (once):
+1. Install [Tailscale](https://tailscale.com/download) on the Mac and on each device, signed in to the same tailnet. Nothing is exposed to the internet.
+2. `tracon start` (keep it running; keep the Mac awake, e.g. with `products/Caffeinate-my-mac`).
+3. `tracon hooks install`: adds two HTTP hooks to every profile's `settings.json` (backups go to `~/.config/tracon/backups`). New sessions use them; `tracon hooks uninstall` removes exactly those two.
+4. `tracon pair`: prints the `tailscale serve` line to run once, then a link and QR code. Open it on each device:
+   - **iPhone/iPad**: Safari > Share > Add to Home Screen, open TRACON from the Home Screen, tap ENABLE PUSH (web push on iOS works only from the Home Screen app).
+   - **Android, Windows, Linux, macOS**: open the link in Chrome or Edge, Install app, tap ENABLE PUSH.
+
+**Security**: the hooks endpoint listens only on `127.0.0.1:4040` and is never served on the remote port. The remote port (`127.0.0.1:4041`, published by `tailscale serve` with HTTPS on your tailnet only) needs the device token from `tracon pair` on every request. Anyone with the pairing link can approve commands on your Mac: keep it private, and `tracon pair --rotate` to sign out every device. Web pushes are encrypted end to end and carry only the callsign and the first line of the prompt.
 
 ---
 
@@ -238,6 +265,7 @@ HOLDING: CL-GRR-0F3E in /Users/you/project is waiting on you.
   - [ ] PixiJS-powered 16-bit retro radar room.
   - [ ] Real-time character animations matching active tools (reading, writing, shell).
   - [ ] Subagents orbiting parent flight consoles.
+- [x] **Partner App**: installable PWA that answers held questions, plan approvals and permission prompts from any device over Tailscale, with web push.
 - [ ] **Phase 4: Advanced Airspace Safety**
   - [x] TCAS file conflict detector: two sessions writing the same file within 5 minutes get a red card and a `TCAS:` line in `tracon status` (a subagent's writes count as its parent's).
   - [ ] Rate-limit trajectory predictions for $20 Pro vs $100 Team accounts.

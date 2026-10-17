@@ -2,5 +2,10 @@
   "name": "tracon-cli",
   "private": true,
   "type": "module",
-  "bin": { "tracon": "bin/tracon.js" }
+  "bin": {
+    "tracon": "bin/tracon.js"
+  },
+  "dependencies": {
+    "qrcode-terminal": "^0.12.0"
+  }
 }
