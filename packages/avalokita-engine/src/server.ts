@@ -24,6 +24,8 @@ const TYPES: Record<string, string> = {
 // Only pages served from this machine may open the local socket or POST to it; stops any website you visit from reading
 // your sessions or answering them. Claude Code's hook requests carry no Origin.
 const LOCAL_ORIGIN = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
+// The local listener also checks Host: a DNS-rebinding page is same-origin with it and sends no foreign Origin on GET.
+const LOCAL_HOST = /^(localhost|127\.0\.0\.1)(:\d+)?$/;
 const MAX_BODY = 1 << 20;
 const MODES = new Set<AwayMode>(["auto", "on", "off"]);
 
@@ -173,8 +175,14 @@ export async function startEngine(opts: EngineOptions = {}) {
   }
 
   const handler = (remote: boolean) => (req: IncomingMessage, res: ServerResponse) => {
+    if (!remote && !LOCAL_HOST.test(req.headers.host ?? "")) return json(res, 403, { error: "foreign host" });
     const url = new URL(req.url ?? "/", "http://x");
-    const path = decodeURIComponent(url.pathname);
+    let path: string;
+    try {
+      path = decodeURIComponent(url.pathname);
+    } catch {
+      return json(res, 400, { error: "bad path" });
+    }
     if (path.startsWith("/hook/")) {
       if (remote || req.method !== "POST" || req.headers.origin) return json(res, 404, { error: "not found" });
       return void hook(req, res);
@@ -197,7 +205,8 @@ export async function startEngine(opts: EngineOptions = {}) {
     const server = createServer(handler(remote));
     const verifyClient = remote
       ? (info: { req: IncomingMessage }) => state.tokenOk(new URL(info.req.url ?? "/", "http://x").searchParams.get("t") ?? undefined)
-      : (info: { origin?: string }) => !info.origin || LOCAL_ORIGIN.test(info.origin);
+      : (info: { origin?: string; req: IncomingMessage }) =>
+          LOCAL_HOST.test(info.req.headers.host ?? "") && (!info.origin || LOCAL_ORIGIN.test(info.origin));
     const wss = new WebSocketServer({ server, path: "/ws", verifyClient });
     wss.on("connection", (ws) => ws.send(snapshot));
     sockets.push(wss);

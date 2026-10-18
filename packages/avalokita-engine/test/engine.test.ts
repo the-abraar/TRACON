@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { appendFileSync, copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { get } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
@@ -313,6 +314,18 @@ test("server: /api/flights snapshot, live WebSocket push, foreign origins refuse
     const evil = new WebSocket(eng.url.replace("http", "ws") + "/ws", { origin: "https://evil.example" });
     const outcome = await new Promise((ok) => evil.on("open", () => ok("open")).on("error", () => ok("refused")));
     assert.equal(outcome, "refused");
+
+    // DNS rebinding: a page on evil.example resolved to 127.0.0.1 is same-origin, so only Host gives it away
+    const status = (path: string, host: string) =>
+      new Promise<number | undefined>((ok) => {
+        const u = new URL(eng.url);
+        get({ hostname: u.hostname, port: u.port, path, headers: { host } }, (r) => (r.resume(), ok(r.statusCode))).on("error", () => ok(undefined));
+      });
+    assert.equal(await status("/api/flights", "evil.example:4040"), 403);
+    assert.equal(await status("/api/flights", "localhost:4040"), 200);
+    assert.equal(await status("/%E0%A4%A", "127.0.0.1"), 400);
+    const rebound = new WebSocket(eng.url.replace("http", "ws") + "/ws", { headers: { host: "evil.example" } });
+    assert.equal(await new Promise((ok) => rebound.on("open", () => ok("open")).on("error", () => ok("refused"))), "refused");
   } finally {
     eng.close();
   }
