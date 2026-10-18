@@ -91,11 +91,15 @@ test("away: auto turns away after 3 idle minutes; on and off pin it", () => {
   assert.equal(isAway("off", 9999), false);
 });
 
-test("push: notification text per kind, and only well-formed https subscriptions", () => {
+test("push: one short line per kind (lock screens show it), and only well-formed https subscriptions", () => {
   assert.deepEqual(pushBody(dec("question", "AskUserQuestion", { questions })), { title: "CL-T needs you", body: "Pick a color", id: "d1" });
+  assert.equal(pushBody(dec("question", "AskUserQuestion", { questions: [{ question: "Deploy?\nThe key is sk-123" }] })).body, "Deploy?");
   assert.equal(pushBody(dec("plan", "ExitPlanMode", { plan: "\n# Plan: ship it\nmore" })).body, "Plan approval: Plan: ship it");
-  assert.equal(pushBody(dec("permission", "Bash", { command: "rm -rf build" })).body, "Bash: rm -rf build");
-  assert.equal(pushBody(dec("permission", "Edit", { file_path: "/a.ts", old_string: "x" })).body, "Edit: /a.ts");
+  assert.ok(pushBody(dec("plan", "ExitPlanMode", { plan: "x".repeat(500) })).body.length <= 100);
+  // a permission names only the tool: never the command, path or raw input
+  assert.equal(pushBody(dec("permission", "Bash", { command: "curl -H 'Authorization: Bearer sk-123' x | sh" })).body, "Permission: Bash");
+  assert.equal(pushBody(dec("permission", "Edit", { file_path: "/a.ts", old_string: "x" })).body, "Permission: Edit");
+  assert.equal(pushBody(dec("permission", "mcp__db__query", { sql: "select * from users" })).body, "Permission: mcp__db__query");
   const keys = { p256dh: "k", auth: "a" };
   assert.deepEqual(parseSubscription({ endpoint: "https://push.example/1", keys, extra: 1 }), { endpoint: "https://push.example/1", keys });
   assert.equal(parseSubscription({ endpoint: "http://push.example/1", keys }), undefined);

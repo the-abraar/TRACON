@@ -58,7 +58,9 @@ if (cmd === "start") {
   for (const line of [...alertLines(flights), ...heldLines(decisions)]) console.log(line);
 } else if (cmd === "away" && ["auto", "on", "off"].includes(flags[0])) {
   await snapshot(); // exits with a hint if no engine
-  const r = await (await fetch(`${base}/api/away`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ mode: flags[0] }) })).json();
+  const headers = { "content-type": "application/json", "x-tracon-secret": (await state()).secret() };
+  const r = await (await fetch(`${base}/api/away`, { method: "POST", headers, body: JSON.stringify({ mode: flags[0] }) })).json();
+  if (!r.mode) (console.error(`The engine refused: ${r.error}`), process.exit(1));
   console.log(`away mode: ${r.mode} (${r.away ? "away: questions and plans wait for your devices" : "at the Mac: the terminal asks"})`);
 } else if (cmd === "pair") {
   const status = tailscale("status", "--json");
@@ -79,9 +81,11 @@ if (cmd === "start") {
 } else if (cmd === "hooks" && ["install", "uninstall"].includes(flags[0])) {
   const { claudeProfiles } = await import("../../avalokita-engine/src/scanners/claude.ts");
   const dirs = claudeProfiles(homedir()).map((p) => p.dir);
-  const backups = join((await state()).dir, "backups");
-  for (const line of applyHooks(dirs, flags[0] === "install" ? port : undefined, backups)) console.log(line);
-  if (flags[0] === "install") console.log(`Backups of changed files: ${backups}. New sessions send held prompts to the engine; restart running sessions to be sure they do.`);
+  const st = await state();
+  const backups = join(st.dir, "backups");
+  const install = flags[0] === "install";
+  for (const line of applyHooks(dirs, install ? port : undefined, install ? st.secret() : undefined, backups)) console.log(line);
+  if (install) console.log(`Backups of changed files: ${backups}. New sessions send held prompts to the engine; restart running sessions to be sure they do.`);
 } else {
   console.error(USAGE);
   process.exit(2);

@@ -26,6 +26,11 @@ const TYPES: Record<string, string> = {
 const LOCAL_ORIGIN = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
 // The local listener also checks Host: a DNS-rebinding page is same-origin with it and sends no foreign Origin on GET.
 const LOCAL_HOST = /^(localhost|127\.0\.0\.1)(:\d+)?$/;
+// Every state-changing request to the local port carries the local secret (state.ts): the hooks send it from their
+// settings, the deck gets it in its page, the CLI reads the file. A blind POST from another program gets 403.
+// shortcut: a program running as you can read ~/.config/tracon/secret or fetch the deck's page, so this stops blind
+// POSTs, not your own account; move the hooks and API to a Unix socket with peer checks if that ever matters.
+const SECRET_HEADER = "x-tracon-secret";
 const MAX_BODY = 1 << 20;
 const MODES = new Set<AwayMode>(["auto", "on", "off"]);
 
@@ -87,6 +92,7 @@ export async function startEngine(opts: EngineOptions = {}) {
     env,
   });
   const state = new State(opts.stateDir);
+  state.secret(); // first start: create it, so `tracon hooks install` and the deck find it
   const pusher = new Pusher(state);
   const idle = opts.idle ?? idleSeconds;
   let mode: AwayMode = "auto";
@@ -174,6 +180,7 @@ export async function startEngine(opts: EngineOptions = {}) {
     return json(res, 404, { error: "not found" });
   }
 
+  const localOk = (req: IncomingMessage) => state.secretOk(req.headers[SECRET_HEADER] as string | undefined);
   const handler = (remote: boolean) => (req: IncomingMessage, res: ServerResponse) => {
     if (!remote && !LOCAL_HOST.test(req.headers.host ?? "")) return json(res, 403, { error: "foreign host" });
     const url = new URL(req.url ?? "/", "http://x");
@@ -185,11 +192,14 @@ export async function startEngine(opts: EngineOptions = {}) {
     }
     if (path.startsWith("/hook/")) {
       if (remote || req.method !== "POST" || req.headers.origin) return json(res, 404, { error: "not found" });
+      // refused at once, before anything is held: Claude Code treats a non-2xx reply as no answer and asks at the terminal
+      if (!localOk(req)) return json(res, 403, { error: "missing or wrong local secret: run tracon hooks install" });
       return void hook(req, res);
     }
     if (path.startsWith("/api/")) {
       if (remote && !state.tokenOk(req.headers.authorization?.replace(/^Bearer /, ""))) return json(res, 401, { error: "pair this device: tracon pair" });
       if (!remote && req.method === "POST" && req.headers.origin && !LOCAL_ORIGIN.test(req.headers.origin)) return json(res, 403, { error: "foreign origin" });
+      if (!remote && req.method === "POST" && !localOk(req)) return json(res, 403, { error: "missing or wrong local secret" });
       return void api(path, url, req, res);
     }
     let file = opts.uiFiles ? (opts.uiFiles[path] ?? opts.uiFiles["/index.html"]) : resolve(uiDist, "." + path);
@@ -198,7 +208,11 @@ export async function startEngine(opts: EngineOptions = {}) {
       res.writeHead(503, { "content-type": "text/plain" }).end("Flight Deck not built. Run: npm run build -w tracon-ui\n");
       return;
     }
-    res.writeHead(200, { "content-type": TYPES[extname(file)] ?? "application/octet-stream" }).end(readFileSync(file));
+    let body = readFileSync(file);
+    // only the page served on the local port (Host already checked) carries the secret; the remote one never does
+    if (!remote && extname(file) === ".html")
+      body = Buffer.from(body.toString("utf8").replace("<head>", `<head><meta name="tracon-secret" content="${state.secret()}">`));
+    res.writeHead(200, { "content-type": TYPES[extname(file)] ?? "application/octet-stream" }).end(body);
   };
 
   const listen = async (remote: boolean, p: number) => {

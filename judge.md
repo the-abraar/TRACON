@@ -36,8 +36,8 @@ Built and judged 2026-10-16. I read PLAN.md, findings.md, README.md and combo_of
 
 ## Gaps (ranked)
 
-1. **Holding is a guess.** Transcripts have no "waiting for approval" entry, so a tool call with no result and no new line for 60 s is called holding. A long build or test run looks identical. The `sessions/<pid>.json` status may expose a waiting value, but only `busy`, `idle` and `shell` were observed. Only `~/.claude-biz` and `~/.claude-grr` wrote pid files during the run, so the other profiles rely on transcripts alone.
-2. **Alerts need the Flight Deck tab open.** The chime and notification come from the browser, so with no tab open nothing alerts; the chime also needs one click on the page after each reload (browser autoplay rule). They inherit the holding heuristic's false positives (long builds), damped by the 2-minute cooldown. Sound was not heard in testing (headless); the notification call was verified.
+1. **Holding is a guess.** Transcripts have no "waiting for approval" entry, so a tool call with no result and no new line for 60 s is called holding. A long build or test run looks identical. The `sessions/<pid>.json` status may expose a waiting value, but only `busy`, `idle` and `shell` were observed. Only `~/.claude-biz` and `~/.claude-grr` wrote pid files during the run, so the other profiles rely on transcripts alone. (Narrowed 2026-10-17: with `tracon hooks install`, a held question, plan or permission makes its flight holding for certain. The guess remains for sessions without the hooks and for agy.)
+2. **Alerts need the Flight Deck tab open.** The chime and notification come from the browser, so with no tab open nothing alerts; the chime also needs one click on the page after each reload (browser autoplay rule). They inherit the holding heuristic's false positives (long builds), damped by the 2-minute cooldown. Sound was not heard in testing (headless); the notification call was verified. (Narrowed 2026-10-17: web push reaches paired devices with no tab open, but only while away, and push on a real phone is still unverified.)
 3. **Quota is thin.** `quotaPercentage` comes only from `TRACON_QUOTA` usage mirrors, and only the `hat` profile writes one. `accountTier` defaults to `pro_20` unless `TRACON_TIERS` says otherwise.
 4. **agy holding and subagents are unverified.** No approval prompt or `invoke_subagent` call exists in the local agy data; the `WAIT*` status mapping and subagent naming are untested against real output. agy cwd comes from the last `run_command` Cwd, so a conversation that never ran a command has an empty cwd.
 5. **Not built:** Ops Lounge / PixiJS (Phase 3), burn-rate forecasting (p4_2), the File Attention Heatmap, `transcript_full.jsonl`. The DAG shows agy background tasks only on the card, not as DAG nodes.
@@ -71,7 +71,7 @@ Built and judged 2026-10-16. I read PLAN.md, findings.md, README.md and combo_of
 
 ## Next steps
 
-1. Catch one real Claude permission prompt and one agy approval with the engine running, and record what `sessions/<pid>.json` and the agy transcript contain at that moment. Replace the 60 s heuristic with that signal where it exists.
+1. Catch one real Claude permission prompt and one agy approval with the engine running, and record what `sessions/<pid>.json` and the agy transcript contain at that moment. Replace the 60 s heuristic with that signal where it exists. (Claude: done another way since 2026-10-17, by the hooks. Still open for agy.)
 2. Owner: decide the tier for each profile (`TRACON_TIERS`), and add a usage-mirror status line to the profiles you want quota for (only `hat` has one).
 3. p4_2 burn-rate forecasting: with quota readings over time, project when the 5-hour window runs out.
 4. Phase 3 Ops Lounge (PixiJS), once the radar deck has been used for a while.
@@ -87,3 +87,56 @@ Built and judged 2026-10-16. I read PLAN.md, findings.md, README.md and combo_of
    - Depends on item 5. Build order: item 5, then the host app and a small widget, then the medium one.
    - Done when: the widget shows the same numbers as `tracon usage` and goes stale-grey when the engine stops.
 
+## Update (2026-10-19, review round)
+
+No new commits since f8c244d (the Host-header and bad-percent-encoding fixes), so this was a gap pass. `scripts/check.sh` passes all 7 steps (35 tests) and leaves the tree clean. I also ran the engine on a made-up `$HOME` with its own state folder and random ports. Nothing was sent to a real device or push service.
+
+**Status of the items still open after the last review:**
+- **Open: the public download is older than the partner app.** The only release is `beta_0.1` (2026-10-16, commit 4955494), and the Homebrew formula points at it. That build's `tracon.js` has no `pair`, `hooks` or `away`, so the README's Partner App setup fails for anyone who installed with brew or the zip.
+- **Open: there is no LICENSE file.** The MIT badge (README.md:17) and the License section (README.md:297-299) point at a file that doesn't exist, and GitHub reports no licence. The repo is public with 0 stars and no description or topics.
+- **Open, now confirmed by a live run: any program on the Mac can approve a prompt.** A POST to `/api/answer` without an `Origin` header got a 200 (server.ts:192 only refuses a *foreign* Origin). Anything that can reach 127.0.0.1:4040 can read the held prompts and answer them. That includes another agent's Bash or an npm install script, and the same program can post fake prompts to `/hook/*`, which then get pushed to the phone. **Fixed the same day** (below).
+- **Open, now confirmed in a screenshot: phone approvals of file writes are blind.** A held `Write` to `.github/workflows/deploy.yml` whose content ran `curl ... | sh` showed only the file path on the 375 px card (answer.ts:28-31).
+
+**Bugs found:**
+1. **`tracon pair --rotate` doesn't sign devices out of push.** It writes a new token (state.ts:38-42) but leaves `subscriptions.json` as it was, and `Pusher.send` notifies every subscription (push.ts:44-55). A lost or revoked phone keeps getting lock-screen notifications with commands, file paths and questions. The README (line 249) says rotating "signs out every device". **Fixed the same day** (below).
+2. **The README understates what a push contains.** It says a push holds "only the callsign and the first line of the prompt". In fact `pushBody` sends up to 160 characters of the Bash command, file path or raw tool input, without redaction (push.ts:15-23). **Fixed the same day** (below).
+3. **Low, not reproduced: one huge transcript would crash the engine on start-up.** The first read of a transcript loads the whole file into one string (tailer.ts:28-34). Nothing catches errors around the poll and refresh (server.ts:220-231), and there is no `uncaughtException` handler. A file over about 512 MB (V8's string limit) would therefore stop the engine every time it starts. The biggest transcript on this Mac is 90 MB, so this is not happening today.
+
+**Checked and fine:** the remote port returns 401 without the token, including for a CORS preflight (no `Access-Control-Allow-Origin` header), so other sites can't use it. A paired device can't change the command it approves: `hookReply` sends only allow/deny, or the plan unchanged (decisions.ts:28-41). At a true 375 px width (an iframe), the deck and the inbox fit, the buttons are 44 px tall, and nothing scrolls sideways. Headless Chrome with `--window-size=375` cuts off the right edge, but that is Chrome's minimum window width, not the app.
+
+**Fixed (2026-10-19):**
+- **Local secret.** The engine makes 32 random bytes in `~/.config/tracon/secret` (0600) on first start and keeps them. Every POST to `/hook/*` and to local `/api/*` must send them in `x-tracon-secret` (constant-time compare), or gets a 403 before anything is held. An HTTP hook can't read a file, so `tracon hooks install` writes the secret into each profile's hook headers. Hooks installed before this fix are refused, so every prompt falls back to the terminal until the owner re-runs `tracon hooks install` (README setup step 3). The deck gets the secret from a `<meta>` tag in the page served on the local port only; `tracon away` reads the file. Limit, in a `shortcut:` comment and the README: a program running as the user can read the file or load the deck.
+- **`tracon pair --rotate`** now empties `subscriptions.json` (`State.rotateToken`), so a revoked phone gets no more pushes. A device that pairs again re-subscribes when it opens the app.
+- **Push bodies** are the callsign plus one line of at most 100 characters: the first line of a question or plan, or `Permission: <tool>`. They no longer include the command, path or tool input. The README now says exactly this.
+- Proof:
+  - `scripts/check.sh` passes all 7 steps with 39 tests (4 new, push test rewritten). Against an export of f8c244d, the new tests fail: the lost phone's subscription survives a rotate, a blind hook POST is held until the test's 2 s abort, and the push body contains the command.
+  - Real Claude Code 2.1.303 in a scratch project, with project-level hooks to a scratch engine on a random port. The user-level TRACON hooks were blocked from reaching port 4040 with `sandbox-exec`.
+    - Wrong secret, engine away: the AskUserQuestion dialog showed at the terminal 3 s after the prompt, and nothing was held.
+    - Right secret: the question was held and answered through the engine API, and Claude received "Red". This shows Claude Code sends an HTTP hook's `headers`.
+    - Engine down: the dialog showed after 2 s.
+    - Bash permission with a wrong secret: the terminal dialog showed, nothing was held, and the file wasn't created (denied at the terminal).
+  - Headless Chrome on the built deck against a scratch engine: the page has the secret, and the AWAY button's POST went through.
+
+## Gaps (ranked, 2026-10-19)
+
+1. **Fixed 2026-10-19: any program on the Mac could approve permission prompts.** The local secret (above) stops blind POSTs. Still open: GET `/api/flights` shows held prompts to any local program. The deck sends no `X-Frame-Options` or `frame-ancestors`, so a website could frame `127.0.0.1:4040` and trick a click on Allow. The secret sits in plain text in each profile's `settings.json`.
+2. **The download doesn't match the README.** `beta_0.1` and the brew formula don't include the partner app. README.md:186 says the app is not on Homebrew, which contradicts lines 29-33. The badge says Linux, but the beta is macOS only. Setup step 2 points at `products/Caffeinate-my-mac`, a folder only the owner has.
+3. **No LICENSE, and the public screenshots show a client's name** (`slides/screenshots/fleet.jpg`). The name TRACON hasn't been checked for trademarks. It is a common FAA acronym, so it would be hard to register, and TRACON Pharmaceuticals already uses it in another field.
+4. **Blind file-write approvals on the phone** (above). Show `content` for Write, a diff for Edit and the JSON for MCP tools.
+5. **Revoking a device is all or nothing**, and the WebSocket token travels in the query string. Fix: one token per device with `tracon devices list|revoke`. (Rotate stops all pushes, and push bodies are trimmed, since 2026-10-19.)
+6. **Nothing keeps the engine running, and nothing checks the code.** There is no launchd or brew service, no top-level error handler and no CI (`.github/workflows` doesn't exist). The owner's engine is up today only because it was started by hand.
+7. **A device whose token was rotated stays on "Connecting..." forever.** App.tsx:50-52 retries every 1.5 s, and the pair form shows only when no token is stored (App.tsx:104).
+8. **Cards and inbox entries don't say what the agent is doing.** They lead with the callsign and two folder names. Everyone except the owner sees `SQ-20` and `QUOTA n/a`, which was confirmed on the made-up home.
+9. **Positioning.** Anthropic's Agent View and Remote Control are free and cover "see sessions, approve from the phone". The README still opens with ASCII art, "swarms" and limit-stretching accounts, not the real difference: one inbox across several accounts and Antigravity, with no relay.
+10. **No revenue path.** Treat it as an open-source portfolio piece until a launch shows demand.
+
+`TODO.md` is out of date: its "commit the fixes made after 94d03fa" item was done in 3b12d51.
+
+## Next steps (2026-10-19)
+
+1. Done 2026-10-19 (see Fixed above): local secret, subscriptions cleared on `--rotate`, short push bodies, with tests. Next, small: add `frame-ancestors 'none'` to the local deck's pages.
+2. Agent, about 2 h: show Write and Edit content on permission cards. When the server returns 401, clear the stored token and show the pair form.
+3. Owner, 1 h: add an MIT LICENSE file, a GitHub description and topics. Re-shoot the slides on a made-up home, and fix the README contradictions (line 186, the Linux badge, the Caffeinate path).
+4. Agent and owner, half a day: cut `beta_0.2` from HEAD, update the tap formula, and add a brew `service` block or a launchd plist with KeepAlive. Add a top-level error handler and a GitHub Actions workflow that runs `scripts/check.sh`.
+5. Owner, 1 h: finish the iPhone push test in TODO.md, and answer a question, a plan and a permission from the phone.
+6. Owner: post one launch (Show HN, r/ClaudeAI) about the multi-account angle, then decide from stars and issues whether to keep investing.

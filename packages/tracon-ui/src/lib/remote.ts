@@ -32,9 +32,16 @@ export function token(): string | undefined {
 
 export const isLocal = () => /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
 
+// The engine puts its local secret in the page it serves on the Mac's own port (never on the remote one); state-changing
+// requests there must carry it.
+const secret = () => document.querySelector<HTMLMetaElement>('meta[name="tracon-secret"]')?.content;
+
 export function api(path: string, init: RequestInit = {}): Promise<Response> {
-  const t = token();
-  return fetch(path, { ...init, headers: { ...(init.body ? { "content-type": "application/json" } : {}), ...(t ? { authorization: `Bearer ${t}` } : {}) } });
+  const t = token(), s = secret();
+  return fetch(path, {
+    ...init,
+    headers: { ...(init.body ? { "content-type": "application/json" } : {}), ...(t ? { authorization: `Bearer ${t}` } : {}), ...(s ? { "x-tracon-secret": s } : {}) },
+  });
 }
 
 export const post = (path: string, body: unknown) => api(path, { method: "POST", body: JSON.stringify(body) });

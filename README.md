@@ -209,7 +209,7 @@ Optional environment variables:
 - `TRACON_QUOTA="HAT=/path/usage.md"`: a usage mirror per profile, in the format `~/.claude-hat/statusline-usage.py` writes. The card's QUOTA gauge shows its 5-hour percentage until that window resets; profiles without a mirror stay `n/a`. TRACON only reads the file.
 - `TRACON_WINDOW_MIN=30`: how long after its last transcript line a session stays on the radar.
 - `TRACON_PORT=4040` (also read by `tracon status`), and `CLAUDE_CONFIG_DIR` (also scanned).
-- `TRACON_REMOTE_PORT=4041`: the listener `tailscale serve` publishes to paired devices. `TRACON_STATE=~/.config/tracon`: the device token, web-push keys, subscribed devices and settings backups.
+- `TRACON_REMOTE_PORT=4041`: the listener `tailscale serve` publishes to paired devices. `TRACON_STATE=~/.config/tracon`: the device token, the local secret, web-push keys, subscribed devices and settings backups.
 
 For UI work, `npm run dev:ui` serves the deck through Vite and proxies to a running engine.
 
@@ -241,12 +241,12 @@ Permission prompts are always listed: Claude Code shows its own dialog at the sa
 **Setup** (once):
 1. Install [Tailscale](https://tailscale.com/download) on the Mac and on each device, signed in to the same tailnet. Nothing is exposed to the internet.
 2. `tracon start` (keep it running; keep the Mac awake, e.g. with `products/Caffeinate-my-mac`).
-3. `tracon hooks install`: adds two HTTP hooks to every profile's `settings.json` (backups go to `~/.config/tracon/backups`). New sessions use them; `tracon hooks uninstall` removes exactly those two.
+3. `tracon hooks install`: adds two HTTP hooks to every profile's `settings.json` (backups go to `~/.config/tracon/backups`). New sessions use them; `tracon hooks uninstall` removes exactly those two. **Installed hooks before 2026-10-19? Run `tracon hooks install` again**: the old hooks don't send the local secret (see Security), so the engine refuses them and every prompt stays at the terminal until you do.
 4. `tracon pair`: prints the `tailscale serve` line to run once, then a link and QR code. Open it on each device:
    - **iPhone/iPad**: Safari > Share > Add to Home Screen, open TRACON from the Home Screen, tap ENABLE PUSH (web push on iOS works only from the Home Screen app).
    - **Android, Windows, Linux, macOS**: open the link in Chrome or Edge, Install app, tap ENABLE PUSH.
 
-**Security**: the hooks endpoint listens only on `127.0.0.1:4040` and is never served on the remote port. The remote port (`127.0.0.1:4041`, published by `tailscale serve` with HTTPS on your tailnet only) needs the device token from `tracon pair` on every request. Anyone with the pairing link can approve commands on your Mac: keep it private, and `tracon pair --rotate` to sign out every device. Web pushes are encrypted end to end and carry only the callsign and the first line of the prompt.
+**Security**: the hooks endpoint listens only on `127.0.0.1:4040` and is never served on the remote port. Every state-changing request to that port (the hooks, answers, away mode, push sign-up) must carry a random local secret kept in `~/.config/tracon/secret` (mode 0600): the hooks send it as a header (`tracon hooks install` writes it into each profile's `settings.json`) and the Flight Deck gets it in the page the engine serves, so a website or a stray script can't approve a prompt with a blind POST. It does not stop a program running as your own user, which can read that file or load the deck. The remote port (`127.0.0.1:4041`, published by `tailscale serve` with HTTPS on your tailnet only) needs the device token from `tracon pair` on every request. Anyone with the pairing link can approve commands on your Mac: keep it private, and `tracon pair --rotate` to sign out every device and stop all pushes (a device you pair again gets pushes again once it opens the app). Web pushes are encrypted end to end, but they show on lock screens, so they carry only the callsign and one short line: the first line of a question or of a plan, or just the tool's name for a permission prompt (never the command, file path or tool input).
 
 ---
 

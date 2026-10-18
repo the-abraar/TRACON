@@ -11,16 +11,18 @@ export function parseSubscription(v: any): PushSubscription | undefined {
   return ok ? { endpoint: v.endpoint, keys: { p256dh: v.keys.p256dh, auth: v.keys.auth } } : undefined;
 }
 
-/** Notification text for a held decision: the first question, the plan's title, or the command/file. */
+/** Notification text for a held decision. Lock screens show it, so it is one short line: the first line of the question
+ * or of the plan, or only the tool's name for a permission (never its command, path or input). */
 export function pushBody(d: Decision): { title: string; body: string; id: string } {
   const i = d.input as Record<string, any>;
-  const first =
+  const firstLine = (v: unknown) => String(v ?? "").split("\n").map((l) => l.trim()).find(Boolean) ?? "";
+  const line =
     d.kind === "question"
-      ? String(i.questions?.[0]?.question ?? "Question")
+      ? firstLine(i.questions?.[0]?.question) || "Question"
       : d.kind === "plan"
-        ? `Plan approval: ${(String(i.plan ?? "").split("\n").find((l) => l.trim()) ?? "").replace(/^#+\s*/, "")}`
-        : `${d.tool}: ${String(i.command ?? i.file_path ?? i.url ?? i.pattern ?? JSON.stringify(i))}`;
-  return { title: `${d.callsign} needs you`, body: first.slice(0, 160), id: d.id };
+        ? `Plan approval: ${firstLine(i.plan).replace(/^#+\s*/, "")}`
+        : `Permission: ${d.tool}`;
+  return { title: `${d.callsign} needs you`, body: line.slice(0, 100), id: d.id };
 }
 
 /** Web push (encrypted end to end; Apple/Google relay it) to every subscribed device. Dead subscriptions are dropped. */
