@@ -94,9 +94,27 @@ export type Answer =
 /** auto = away after 3 idle minutes at the Mac's keyboard and mouse; on/off pin it. */
 export type AwayMode = "auto" | "on" | "off";
 
+export interface QuotaWindow {
+  pct: number;
+  /** ISO time the window resets, when the mirror gives one */
+  resetsAt?: string;
+}
+
+/** A Claude config profile (~/.claude, ~/.claude-*) and its quota from the TRACON_QUOTA usage mirror, if one is mapped and fresh. */
+export interface Account {
+  /** "" for ~/.claude, else the suffix: ~/.claude-biz -> "BIZ" */
+  profile: string;
+  tier: AccountTier;
+  fiveHour?: QuotaWindow;
+  weekly?: QuotaWindow;
+  /** ISO time of the mirror's last reading */
+  updatedAt?: string;
+}
+
 /** Every WebSocket message and GET /api/flights. */
 export interface Snapshot {
   flights: FlightPacket[];
+  accounts: Account[];
   decisions: Decision[];
   away: { mode: AwayMode; away: boolean };
 }

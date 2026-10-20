@@ -206,7 +206,7 @@ scripts/check.sh                               # typecheck, read-only guard, tes
 
 Optional environment variables:
 - `TRACON_TIERS="BIZ=team_100,WORK=api_usage"`: the plan behind each Claude profile (suffix of `~/.claude-<suffix>`; `""` is `~/.claude`). Unlisted profiles show as `pro_20`.
-- `TRACON_QUOTA="HAT=/path/usage.md"`: a usage mirror per profile, in the format `~/.claude-hat/statusline-usage.py` writes. The card's QUOTA gauge shows its 5-hour percentage until that window resets; profiles without a mirror stay `n/a`. TRACON only reads the file.
+- `TRACON_QUOTA="HAT=/path/usage-hat.md"`: a usage mirror per profile, in the format `~/.claude-hat/statusline-usage.py` writes. The card's QUOTA gauge shows its 5-hour percentage until that window resets, and the deck's left accounts rail lists every profile with its 5-hour and weekly percentages and reset times; profiles without a mirror stay `n/a`. TRACON only reads the file.
 - `TRACON_WINDOW_MIN=30`: how long after its last transcript line a session stays on the radar.
 - `TRACON_PORT=4040` (also read by `tracon status`), and `CLAUDE_CONFIG_DIR` (also scanned).
 - `TRACON_REMOTE_PORT=4041`: the listener `tailscale serve` publishes to paired devices. `TRACON_STATE=~/.config/tracon`: the device token, the local secret, web-push keys, subscribed devices and settings backups.

@@ -3,7 +3,7 @@ import type { FlightPacket, FlightState, ToolAction } from "../../../../avalokit
 
 export const tokens = (n: number) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(1)}k` : String(n));
 
-const SQUAWK: Record<FlightPacket["accountTier"], string> = { pro_20: "SQ-20", team_100: "SQ-100", api_usage: "SQ-API", gemini: "SQ-AGY" };
+export const SQUAWK: Record<FlightPacket["accountTier"], string> = { pro_20: "SQ-20", team_100: "SQ-100", api_usage: "SQ-API", gemini: "SQ-AGY" };
 
 const STATE: Record<FlightState, { label: string; tone: string }> = {
   preflight: { label: "PREFLIGHT", tone: "bg-sky-900/60 text-sky-200" },
@@ -16,12 +16,12 @@ const STATE: Record<FlightState, { label: string; tone: string }> = {
 
 const ACTION_ICON: Record<ToolAction, LucideIcon> = { read: FileText, write: PenLine, bash: Terminal, subagent: Users, other: Wrench };
 
-const ago = (iso: string) => {
+export const ago = (iso: string) => {
   const s = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 1000));
   return s < 60 ? `${s}s ago` : s < 3600 ? `${Math.floor(s / 60)}m ago` : `${Math.floor(s / 3600)}h ago`;
 };
 
-function Gauge({ label, pct, text, danger = false }: { label: string; pct?: number; text: string; danger?: boolean }) {
+export function Gauge({ label, pct, text, danger = false }: { label: string; pct?: number; text: string; danger?: boolean }) {
   return (
     <div>
       <div className="flex justify-between text-[10px] tracking-widest text-slate-500">

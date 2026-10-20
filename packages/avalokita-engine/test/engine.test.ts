@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { after, test } from "node:test";
 import { Airspace, parseTiers } from "../src/airspace.ts";
 import { COLLISION_WINDOW_MS, findCollisions } from "../src/collision.ts";
-import { parseQuotaFiles, readQuota } from "../src/quota.ts";
+import { parseQuotaFiles, readQuota, readUsage } from "../src/quota.ts";
 import { Flight, HOLD_AFTER_MS, MAX_TOOLS_PER_TURN, MAX_TURNS, toolAction } from "../src/normalizer.ts";
 import { parseAgyLine } from "../src/parsers/agy.ts";
 import { parseClaudeLine } from "../src/parsers/claude.ts";
@@ -262,6 +262,11 @@ test("quota: reads the 5-hour percentage from a usage mirror until its window re
   const at = Date.parse("2026-10-15T18:28:03+06:00");
   writeFileSync(file, `# Claude usage (mirror)\n\n**5-hour window: 37% used.** Resets 2026-10-15 21:40 +06 (in 3h11m).\n**7-day window: 12% used.** Resets 2026-10-22 08:00 +06 (in 157h31m).\n\nUpdated: 2026-10-15 18:28:03 +06 (epoch ${at / 1000})\n`);
   assert.equal(readQuota(file, at + 60_000), 37);
+  assert.deepEqual(readUsage(file, Date.parse("2026-10-15T21:40:00+06:00")), {
+    fiveHour: undefined,
+    weekly: { pct: 12, resetsAt: "2026-10-22T02:00:00.000Z" },
+    updatedAt: new Date(at).toISOString(),
+  }, "the weekly window outlives the 5-hour one");
   assert.equal(readQuota(file, Date.parse("2026-10-15T21:40:00+06:00")), undefined, "window reset: stale");
   assert.equal(readQuota(join(tmp, "missing.md"), at), undefined);
   writeFileSync(file, `**5-hour window: 5% used.** Resets n/a.\nUpdated: x (epoch ${at / 1000})\n`);
@@ -273,6 +278,9 @@ test("quota: reads the 5-hour percentage from a usage mirror until its window re
   const air = new Airspace({ home, windowMs: Number.MAX_SAFE_INTEGER, quota: `BIZ=${file}`, env: {} });
   const cl = air.tick(T0 + 6_000).find((p) => p.flightCallsign === "CL-BIZ-0000")!;
   assert.equal(cl.fuelMetrics.quotaPercentage, 42);
+  const accounts = air.accounts(T0 + 6_000);
+  assert.deepEqual(accounts.find((a) => a.profile === "BIZ")?.fiveHour, { pct: 42, resetsAt: "2026-01-01T03:00:00.000Z" });
+  assert.ok(accounts.filter((a) => a.profile !== "BIZ").every((a) => a.updatedAt === undefined), "profiles without a mirror carry no quota");
 });
 
 test("airspace drops sessions outside the activity window", () => {

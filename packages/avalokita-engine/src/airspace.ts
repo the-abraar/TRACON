@@ -2,13 +2,13 @@ import { statSync } from "node:fs";
 import { join, sep } from "node:path";
 import { COLLISION_WINDOW_MS, findCollisions, type FileWrite } from "./collision.ts";
 import { Flight, type LiveInfo } from "./normalizer.ts";
-import { parseQuotaFiles, readQuota } from "./quota.ts";
+import { parseQuotaFiles, readQuota, readUsage } from "./quota.ts";
 import { parseAgyLine } from "./parsers/agy.ts";
 import { parseClaudeLine } from "./parsers/claude.ts";
 import { agyBrainDir, agyTasks, agyTranscripts } from "./scanners/agy.ts";
 import { claudeCallsign, claudeLiveSessions, claudeProfiles, claudeTranscripts, subagentRole, type Transcript } from "./scanners/claude.ts";
 import { Tailer } from "./tailers/tailer.ts";
-import type { AccountTier, FlightPacket, ParsedEvent, TraceNode } from "./types.ts";
+import type { Account, AccountTier, FlightPacket, ParsedEvent, TraceNode } from "./types.ts";
 
 /** JSON with object keys sorted, so equal inputs compare equal whatever their key order. */
 const canon = (v: unknown) => JSON.stringify(v, (_k, x) => (x && typeof x === "object" && !Array.isArray(x) ? Object.fromEntries(Object.entries(x).sort(([a], [b]) => (a < b ? -1 : 1))) : x));
@@ -123,6 +123,14 @@ export class Airspace {
       packets.push(p);
     }
     return packets.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+  }
+
+  /** Every Claude profile with its plan and, when TRACON_QUOTA maps a mirror for it, its 5-hour and weekly quota. */
+  accounts(now = Date.now()): Account[] {
+    return claudeProfiles(this.home, this.env).map((p) => {
+      const file = this.quotaFiles.get(p.name);
+      return { profile: p.name, tier: this.tiers.get(p.name) ?? "pro_20", ...(file === undefined ? {} : readUsage(file, now)) };
+    });
   }
 
   /** The callsign of the Claude session that owns a transcript (a hook body gives its transcript_path and session_id). */

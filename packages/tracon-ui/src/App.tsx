@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { Snapshot } from "../../avalokita-engine/src/types.ts";
 import { useHoldingAlerts } from "./components/alerts/useHoldingAlerts.ts";
 import { DecisionInbox } from "./components/decisions/DecisionInbox.tsx";
+import { AccountsRail } from "./components/fleet/AccountsRail.tsx";
 import { FleetBar } from "./components/fleet/FleetBar.tsx";
 import { FlightCard } from "./components/fleet/FlightCard.tsx";
 import { FlightDag } from "./components/radar/FlightDag.tsx";
@@ -37,7 +38,7 @@ function PairForm() {
 
 /** Live airspace from the engine; each socket message is the full snapshot: flights, held decisions, away state. */
 function useAirspace() {
-  const [snap, setSnap] = useState<Snapshot>({ flights: [], decisions: [], away: { mode: "auto", away: false } });
+  const [snap, setSnap] = useState<Snapshot>({ flights: [], accounts: [], decisions: [], away: { mode: "auto", away: false } });
   const [online, setOnline] = useState(false);
   useEffect(() => {
     let ws: WebSocket | undefined;
@@ -80,7 +81,7 @@ function useFocusedDecision() {
 }
 
 export default function App() {
-  const { flights, decisions, away, online } = useAirspace();
+  const { flights, accounts, decisions, away, online } = useAirspace();
   const focus = useFocusedDecision();
   const alerts = useHoldingAlerts(flights);
   const [traced, setTraced] = useState<string>();
@@ -92,33 +93,36 @@ export default function App() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-200">
-      <FleetBar flights={flights} online={online} alerts={alerts} away={away} />
-      <main className="mx-auto max-w-7xl p-4">
-        <DecisionInbox decisions={decisions} focus={focus} />
-        {tracedFlight && <FlightDag key={tracedFlight.flightCallsign} flight={tracedFlight} onClose={() => setTraced(undefined)} />}
-        {flights.length === 0 ? (
-          <div className="mt-24 text-center font-mono text-sm text-slate-500">
-            {online
-              ? "Airspace clear: no agent session active in the last 30 minutes."
-              : !isLocal() && !token()
-                ? <PairForm />
-                : "Connecting to the Avalokita Engine..."}
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            {flights.map((f) => (
-              <FlightCard
-                key={f.flightCallsign}
-                f={f}
-                maxBurn={Math.max(...flights.map((x) => x.fuelMetrics.burnRatePerMin))}
-                selected={f.flightCallsign === traced}
-                onTrace={() => setTraced(f.flightCallsign === traced ? undefined : f.flightCallsign)}
-              />
-            ))}
-          </div>
-        )}
-      </main>
+    <div className="flex min-h-screen bg-slate-950 text-slate-200">
+      <AccountsRail accounts={accounts} />
+      <div className="min-w-0 flex-1">
+        <FleetBar flights={flights} online={online} alerts={alerts} away={away} />
+        <main className="mx-auto max-w-7xl p-4">
+          <DecisionInbox decisions={decisions} focus={focus} />
+          {tracedFlight && <FlightDag key={tracedFlight.flightCallsign} flight={tracedFlight} onClose={() => setTraced(undefined)} />}
+          {flights.length === 0 ? (
+            <div className="mt-24 text-center font-mono text-sm text-slate-500">
+              {online
+                ? "Airspace clear: no agent session active in the last 30 minutes."
+                : !isLocal() && !token()
+                  ? <PairForm />
+                  : "Connecting to the Avalokita Engine..."}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              {flights.map((f) => (
+                <FlightCard
+                  key={f.flightCallsign}
+                  f={f}
+                  maxBurn={Math.max(...flights.map((x) => x.fuelMetrics.burnRatePerMin))}
+                  selected={f.flightCallsign === traced}
+                  onTrace={() => setTraced(f.flightCallsign === traced ? undefined : f.flightCallsign)}
+                />
+              ))}
+            </div>
+          )}
+        </main>
+      </div>
     </div>
   );
 }

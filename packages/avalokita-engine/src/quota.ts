@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import type { Account, QuotaWindow } from "./types.ts";
 
 const FIVE_HOURS_MS = 5 * 60 * 60_000;
 
@@ -16,22 +17,36 @@ export function parseQuotaFiles(spec = ""): Map<string, string> {
   return m;
 }
 
+/** One rate-limit window from a usage mirror; undefined when absent ("n/a") or already reset. */
+function readWindow(text: string, label: string, spanMs: number, readAt: number, now: number): QuotaWindow | undefined {
+  const pct = new RegExp(`${label} window: (\\d+(?:\\.\\d+)?)% used\\.\\*\\* Resets (\\d{4}-\\d{2}-\\d{2}) (\\d{2}:\\d{2}) ([+-]\\d{2})(\\d{2})?`).exec(text)
+    ?? new RegExp(`${label} window: (\\d+(?:\\.\\d+)?)% used`).exec(text);
+  if (!pct) return undefined;
+  const resets = pct[2] ? Date.parse(`${pct[2]}T${pct[3]}:00${pct[4]}:${pct[5] ?? "00"}`) : NaN;
+  if (!Number.isNaN(resets) ? now >= resets : now - readAt > spanMs) return undefined;
+  return { pct: Number(pct[1]), resetsAt: Number.isNaN(resets) ? undefined : new Date(resets).toISOString() };
+}
+
 /**
- * The 5-hour used percentage from a usage mirror, or undefined when the file is missing or unreadable,
- * or the window it measured has reset (its "Resets" time has passed, or the reading is over 5 hours old).
+ * The 5-hour and 7-day windows from a usage mirror, or undefined when the file is missing, unreadable or has no reading time.
+ * A window is dropped once it has reset (its "Resets" time has passed, or, with no reset time, the reading is older than the window).
  */
-export function readQuota(path: string, now: number): number | undefined {
+export function readUsage(path: string, now: number): Pick<Account, "fiveHour" | "weekly" | "updatedAt"> | undefined {
   let text: string;
   try {
     text = readFileSync(path, "utf8");
   } catch {
     return undefined;
   }
-  const pct = /5-hour window: (\d+(?:\.\d+)?)% used\.\*\* Resets (\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}) ([+-]\d{2})(\d{2})?/.exec(text)
-    ?? /5-hour window: (\d+(?:\.\d+)?)% used/.exec(text);
   const epoch = /\(epoch (\d+)\)/.exec(text);
-  if (!pct || !epoch) return undefined;
-  const resets = pct[2] ? Date.parse(`${pct[2]}T${pct[3]}:00${pct[4]}:${pct[5] ?? "00"}`) : NaN;
-  if (!Number.isNaN(resets) ? now >= resets : now - Number(epoch[1]) * 1000 > FIVE_HOURS_MS) return undefined;
-  return Number(pct[1]);
+  if (!epoch) return undefined;
+  const readAt = Number(epoch[1]) * 1000;
+  return {
+    fiveHour: readWindow(text, "5-hour", FIVE_HOURS_MS, readAt, now),
+    weekly: readWindow(text, "7-day", 7 * 24 * 60 * 60_000, readAt, now),
+    updatedAt: new Date(readAt).toISOString(),
+  };
 }
+
+/** The 5-hour used percentage from a usage mirror, or undefined when unknown or reset. */
+export const readQuota = (path: string, now: number): number | undefined => readUsage(path, now)?.fiveHour?.pct;

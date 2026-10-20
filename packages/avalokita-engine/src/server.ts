@@ -100,7 +100,8 @@ export async function startEngine(opts: EngineOptions = {}) {
 
   const snap = (): string => {
     const decisions = broker.list();
-    const s: Snapshot = { flights: air.tick(Date.now(), new Set(decisions.map((d) => d.callsign))), decisions, away: { mode, away } };
+    const now = Date.now();
+    const s: Snapshot = { flights: air.tick(now, new Set(decisions.map((d) => d.callsign))), accounts: air.accounts(now), decisions, away: { mode, away } };
     return JSON.stringify(s);
   };
   // Each message is the whole airspace, so clients also learn when a flight leaves or a decision is answered elsewhere.
