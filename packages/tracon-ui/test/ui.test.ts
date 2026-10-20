@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { FlightPacket, TraceNode } from "../../avalokita-engine/src/types.ts";
+import type { Account, FlightPacket, TraceNode } from "../../avalokita-engine/src/types.ts";
 import { ALERT_COOLDOWN_MS, newlyHolding } from "../src/components/alerts/holding.ts";
-import { COL_W, ROW_H, duration, layoutTrace } from "../src/components/radar/layout.ts";
+import { COL_W, MIN_GROUP, ROW_H, duration, layoutTrace } from "../src/components/radar/layout.ts";
+import { gap, sortAccounts } from "../src/components/fleet/sortAccounts.ts";
 
 test("layoutTrace: a column per turn, children stacked, sideways turn edges", () => {
   const trace: TraceNode[] = [
@@ -28,6 +29,30 @@ test("layoutTrace: a column per turn, children stacked, sideways turn edges", ()
     ],
     "edges to unknown parents are dropped",
   );
+});
+
+test("layoutTrace: runs of same-action calls fold into one group node that keeps their edges", () => {
+  const tool = (id: string, label: string, action: TraceNode["action"], parent: string, end?: number): TraceNode => ({
+    id, kind: "tool", label, turn: "turn-1", parent, start: Number(id.slice(1)), ...(end === undefined ? {} : { end }), action, detail: `/f/${id}`,
+  });
+  const trace: TraceNode[] = [
+    { id: "turn-1", kind: "turn", label: "Turn 1", turn: "turn-1", start: 0 },
+    tool("t1", "Read", "read", "turn-1", 2),
+    tool("t2", "Read", "read", "turn-1", 3), // two reads: below MIN_GROUP, left alone
+    tool("t3", "Edit", "write", "t2", 9),
+    tool("t4", "Edit", "write", "t3", 8), // parallel with t5
+    tool("t5", "Write", "write", "t3", 7),
+    tool("t6", "Bash", "bash", "t5"),
+    { id: "sub-x", kind: "subagent", label: "Explore", turn: "turn-1", parent: "t4", start: 5 },
+  ];
+  assert.equal(MIN_GROUP, 3);
+  const { nodes, edges } = layoutTrace(trace);
+  assert.deepEqual(nodes.map((n) => [n.id, n.position.y / ROW_H]), [["turn-1", 0], ["t1", 1], ["t2", 2], ["group-t3", 3], ["t6", 4], ["sub-x", 5]]);
+  const g = nodes.find((n) => n.id === "group-t3")!.data;
+  assert.deepEqual(g.node, { id: "group-t3", kind: "tool", label: "Edit, Write ×3", turn: "turn-1", parent: "t2", start: 3, end: 9, action: "write", detail: "3 files" });
+  assert.deepEqual(g.members!.map((m) => m.id), ["t3", "t4", "t5"]);
+  assert.deepEqual(edges.map((e) => `${e.source}->${e.target}`), ["turn-1->t1", "turn-1->t2", "t2->group-t3", "group-t3->t6", "group-t3->sub-x"]);
+  assert.equal(layoutTrace([...trace.slice(0, 5), tool("t5", "Write", "write", "t3")]).nodes.at(-1)!.data.node.end, undefined, "a running member keeps the group running");
 });
 
 test("duration formats ms, seconds and minutes", () => {
@@ -95,4 +120,22 @@ test("savePairToken: takes the token from a pasted pair link or bare token, reje
   assert.equal(token(), "cd".repeat(32));
   for (const bad of ["", "https://mac.tail0.ts.net/", `#pair=${t}x`, "ab".repeat(31), `x${t}`]) assert.equal(savePairToken(bad), false, bad);
   assert.equal(token(), "cd".repeat(32));
+});
+
+test("sortAccounts: best or worst first, accounts without the data last", () => {
+  const acc = (profile: string, five?: number, resetsAt?: string, tokens = 0): Account => ({
+    profile, tier: "pro_20", tokens, ...(five === undefined ? {} : { fiveHour: { pct: five, resetsAt } }),
+  });
+  const list = [acc("A", 80, "2026-01-01T05:00:00Z", 10), acc("B"), acc("C", 20, "2026-01-01T01:00:00Z", 30), acc("D", 50, undefined, 20)];
+  const names = (key: Parameters<typeof sortAccounts>[1], worst: boolean) => sortAccounts(list, key, worst).map((a) => a.profile).join("");
+  assert.equal(names("fiveLeft", false), "CDAB", "most 5-hour quota left first");
+  assert.equal(names("fiveLeft", true), "ADCB");
+  assert.equal(names("fiveReset", false), "CABD", "soonest reset first; no reset time last");
+  assert.equal(names("tokens", true), "CDAB", "most tokens first");
+  assert.equal(names("profile", false), "ABCD");
+  assert.equal(names("profile", true), "DCBA");
+  assert.equal(gap("fiveReset", list[2], list[0]), 4 * 3600_000);
+  assert.equal(gap("fiveLeft", list[0], list[2]), 60);
+  assert.equal(gap("fiveLeft", list[0], list[1]), undefined, "no data, no gap");
+  assert.equal(gap("profile", list[0], list[2]), undefined);
 });

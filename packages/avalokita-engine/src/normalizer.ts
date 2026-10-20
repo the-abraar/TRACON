@@ -34,6 +34,16 @@ export function toolAction(name: string): ToolAction {
   return "other";
 }
 
+/**
+ * One line for the message that opened a turn: a background task's own <summary>, "command output" for echoed
+ * `!`/slash command output, else the text with tags dropped (slash commands and pastes arrive wrapped in tags).
+ */
+export function promptSummary(text: string): string {
+  const s = /^\s*<task-notification>[\s\S]*?<summary>([\s\S]*?)<\/summary>/.exec(text)?.[1]
+    ?? (/^\s*<(local-command-stdout|bash-stdout|bash-stderr)>/.test(text) ? "command output" : text.replace(/<[^>]*>/g, " "));
+  return redact(s.replace(/\s+/g, " ").trim()).slice(0, 160);
+}
+
 const redact = (s: string) => s.replace(/(api[_-]?key|token|secret|password)(\s*[=:]\s*)\S+/gi, "$1$2***");
 
 function describe(t: ToolCall): NonNullable<FlightPacket["activeTool"]> {
@@ -77,7 +87,7 @@ export class Flight {
     this.lastTs = Math.max(this.lastTs, e.ts);
     const cur = this.turns.at(-1);
     // agent work after a finished turn (or with no prompt seen) starts a new turn
-    if (e.kind === "prompt" || ((e.kind === "tool_use" || e.kind === "thinking") && (cur === undefined || cur.node.end !== undefined))) this.openTurn(e.ts);
+    if (e.kind === "prompt" || ((e.kind === "tool_use" || e.kind === "thinking") && (cur === undefined || cur.node.end !== undefined))) this.openTurn(e.ts, e.kind === "prompt" ? e.text : undefined);
     const turn = this.turns.at(-1);
     if ("usage" in e && e.usage) {
       const prev = this.usage.get(e.usage.key);
@@ -145,11 +155,15 @@ export class Flight {
     for (const n of t.tools) n.end ??= Math.max(ts, n.start); // interrupted calls never get a result
   }
 
-  private openTurn(ts: number): void {
+  /** `prompt`: the user's message that opened the turn; its start becomes the turn's detail. */
+  private openTurn(ts: number, prompt?: string): void {
     this.closeTurn(ts);
     const id = `turn-${++this.turnCount}`;
     const parent = this.turns.at(-1)?.node.id;
-    this.turns.push({ node: { id, kind: "turn", label: `Turn ${this.turnCount}`, turn: id, ...(parent ? { parent } : {}), start: ts, tokens: 0 }, tools: [], batch: [] });
+    const detail = prompt === undefined ? "" : promptSummary(prompt);
+    const node: TraceNode = { id, kind: "turn", label: `Turn ${this.turnCount}`, turn: id, ...(parent ? { parent } : {}), start: ts, tokens: 0 };
+    if (detail) node.detail = detail;
+    this.turns.push({ node, tools: [], batch: [] });
     if (this.turns.length > MAX_TURNS) this.turns.shift();
   }
 

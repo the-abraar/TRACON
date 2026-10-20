@@ -27,7 +27,7 @@ export function parseClaudeLine(line: string, sidechain = false): ParsedEvent | 
     if (o.isMeta) return null;
     const text = typeof content === "string" ? content : Array.isArray(content) ? content.map((c: any) => c?.text ?? "").join("") : "";
     if (text.startsWith("[Request interrupted by user")) return { kind: "turn_end", ts, cwd };
-    return { kind: "prompt", ts, cwd };
+    return { kind: "prompt", ts, cwd, text };
   }
 
   if (o.type === "assistant") {

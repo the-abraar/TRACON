@@ -7,7 +7,7 @@ import { after, test } from "node:test";
 import { Airspace, parseTiers } from "../src/airspace.ts";
 import { COLLISION_WINDOW_MS, findCollisions } from "../src/collision.ts";
 import { parseQuotaFiles, readQuota, readUsage } from "../src/quota.ts";
-import { Flight, HOLD_AFTER_MS, MAX_TOOLS_PER_TURN, MAX_TURNS, toolAction } from "../src/normalizer.ts";
+import { Flight, HOLD_AFTER_MS, MAX_TOOLS_PER_TURN, MAX_TURNS, promptSummary, toolAction } from "../src/normalizer.ts";
 import { parseAgyLine } from "../src/parsers/agy.ts";
 import { parseClaudeLine } from "../src/parsers/claude.ts";
 import { claudeProfiles } from "../src/scanners/claude.ts";
@@ -85,10 +85,19 @@ test("normalizer: live process info overrides the transcript", () => {
   assert.equal(done.packet(T0, { pid: 42, alive: true, status: "idle" }).pid, 42);
 });
 
+test("promptSummary: one readable line for the message that opened a turn", () => {
+  assert.equal(promptSummary("  fix the\n\nlogin bug  "), "fix the login bug");
+  assert.equal(promptSummary("<command-name>/review</command-name>\n<command-args>HEAD~1</command-args>"), "/review HEAD~1");
+  assert.equal(promptSummary("<task-notification>\n<task-id>b1</task-id>\n<summary>Background command \"Run tests\" completed (exit code 0)</summary>\n</task-notification>"), 'Background command "Run tests" completed (exit code 0)');
+  assert.equal(promptSummary("<bash-stdout>lots of output</bash-stdout><bash-stderr></bash-stderr>"), "command output");
+  assert.equal(promptSummary("use password: hunter2 here"), "use password: *** here");
+  assert.equal(promptSummary("x".repeat(500)).length, 160);
+});
+
 test("trace: turn and tool nodes with latency, tokens and batch edges", () => {
   const f = fold(lines("claude/session.jsonl").map((l) => parseClaudeLine(l)));
   assert.deepEqual(f.trace(), [
-    { id: "turn-1", kind: "turn", label: "Turn 1", turn: "turn-1", start: T0 + 1000, end: T0 + 10_000, tokens: 245 },
+    { id: "turn-1", kind: "turn", label: "Turn 1", turn: "turn-1", start: T0 + 1000, end: T0 + 10_000, tokens: 245, detail: "Add a README section" },
     { id: "tool-toolu_read", kind: "tool", label: "Read", turn: "turn-1", parent: "turn-1", start: T0 + 3000, end: T0 + 4000, action: "read", detail: "/work/demo/README.md" },
     { id: "tool-toolu_bash", kind: "tool", label: "Bash", turn: "turn-1", parent: "tool-toolu_read", start: T0 + 5000, end: T0 + 9000, action: "bash", detail: "npm test TOKEN=***" },
   ]);
@@ -281,6 +290,8 @@ test("quota: reads the 5-hour percentage from a usage mirror until its window re
   const accounts = air.accounts(T0 + 6_000);
   assert.deepEqual(accounts.find((a) => a.profile === "BIZ")?.fiveHour, { pct: 42, resetsAt: "2026-01-01T03:00:00.000Z" });
   assert.ok(accounts.filter((a) => a.profile !== "BIZ").every((a) => a.updatedAt === undefined), "profiles without a mirror carry no quota");
+  assert.equal(cl.fuelMetrics.totalTokens, 230);
+  assert.equal(accounts.find((a) => a.profile === "BIZ")?.tokens, 240, "the session's 230 plus its subagent's 10");
 });
 
 test("airspace drops sessions outside the activity window", () => {

@@ -125,11 +125,13 @@ export class Airspace {
     return packets.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
   }
 
-  /** Every Claude profile with its plan and, when TRACON_QUOTA maps a mirror for it, its 5-hour and weekly quota. */
+  /** Every Claude profile with its plan, its tokens in the window and, when TRACON_QUOTA maps a mirror for it, its 5-hour and weekly quota. */
   accounts(now = Date.now()): Account[] {
     return claudeProfiles(this.home, this.env).map((p) => {
       const file = this.quotaFiles.get(p.name);
-      return { profile: p.name, tier: this.tiers.get(p.name) ?? "pro_20", ...(file === undefined ? {} : readUsage(file, now)) };
+      let tokens = 0;
+      for (const e of this.tracked.values()) if (e.profile === p.name && this.inWindow(e, now)) tokens += e.flight.totalTokens;
+      return { profile: p.name, tier: this.tiers.get(p.name) ?? "pro_20", tokens, ...(file === undefined ? {} : readUsage(file, now)) };
     });
   }
 

@@ -9,7 +9,7 @@ const STATE: Record<FlightState, { label: string; tone: string }> = {
   preflight: { label: "PREFLIGHT", tone: "bg-sky-900/60 text-sky-200" },
   cruising: { label: "CRUISING", tone: "bg-emerald-900/60 text-emerald-200" },
   tool_executing: { label: "TOOL", tone: "bg-cyan-900/60 text-cyan-200" },
-  holding: { label: "HOLDING", tone: "bg-amber-500 text-slate-950 animate-pulse" },
+  holding: { label: "HOLDING", tone: "bg-amber-500 text-black animate-pulse" },
   landed: { label: "LANDED", tone: "bg-slate-800 text-slate-400" },
   aborted: { label: "ABORTED", tone: "bg-red-900/70 text-red-200" },
 };

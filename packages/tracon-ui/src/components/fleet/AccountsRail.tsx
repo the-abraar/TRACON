@@ -1,11 +1,21 @@
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { useState } from "react";
 import type { Account, QuotaWindow } from "../../../../avalokita-engine/src/types.ts";
-import { Gauge, SQUAWK, ago } from "./FlightCard.tsx";
+import { Gauge, SQUAWK, ago, tokens } from "./FlightCard.tsx";
+import { SORTS, type SortKey, gap, sortAccounts } from "./sortAccounts.ts";
 
-const until = (iso: string) => {
-  const m = Math.max(0, Math.round((Date.parse(iso) - Date.now()) / 60_000));
+const span = (ms: number) => {
+  const m = Math.max(0, Math.round(ms / 60_000));
   return m < 60 ? `${m}m` : m < 1440 ? `${Math.floor(m / 60)}h${m % 60}m` : `${Math.floor(m / 1440)}d${Math.floor((m % 1440) / 60)}h`;
+};
+const until = (iso: string) => span(Date.parse(iso) - Date.now());
+
+const GAP: Record<Exclude<SortKey, "profile">, (d: number) => string> = {
+  fiveLeft: (d) => `${Math.round(d)}%`,
+  weekLeft: (d) => `${Math.round(d)}%`,
+  fiveReset: span,
+  weekReset: span,
+  tokens: (d) => `${tokens(d)} tok`,
 };
 
 function Window({ label, w }: { label: string; w?: QuotaWindow }) {
@@ -20,7 +30,10 @@ function Window({ label, w }: { label: string; w?: QuotaWindow }) {
 /** Collapsible left rail: every Claude profile with its 5-hour and weekly quota from its usage mirror. */
 export function AccountsRail({ accounts }: { accounts: Account[] }) {
   const [open, setOpen] = useState(false);
+  const [sort, setSort] = useState<SortKey>("profile");
+  const [worstFirst, setWorstFirst] = useState(false);
   const Icon = open ? PanelLeftClose : PanelLeftOpen;
+  const sorted = sortAccounts(accounts, sort, worstFirst);
   return (
     <aside aria-label="Accounts" className="sticky top-0 z-20 flex h-screen shrink-0 border-r border-slate-800 bg-slate-950">
       <div className="flex w-10 flex-col items-center py-3">
@@ -40,21 +53,50 @@ export function AccountsRail({ accounts }: { accounts: Account[] }) {
         // phones: overlay beside the rail; sm and up: in the layout, pushing the deck right
         <div id="accounts-panel" className="fixed inset-y-0 left-10 w-64 overflow-y-auto border-r border-slate-800 bg-slate-950 p-3 sm:static sm:border-r-0 sm:pl-0">
           <h2 className="mb-3 font-mono text-[10px] tracking-widest text-slate-500">ACCOUNTS</h2>
+          <div className="mb-3 flex gap-2 font-mono text-[10px]">
+            <select
+              value={sort}
+              onChange={(e) => setSort(e.target.value as SortKey)}
+              aria-label="Sort accounts by"
+              className="min-w-0 flex-1 rounded border border-slate-800 bg-slate-900 px-1 py-1 text-slate-300"
+            >
+              {Object.entries(SORTS).map(([k, s]) => <option key={k} value={k}>{s.label}</option>)}
+            </select>
+            <button
+              type="button"
+              onClick={() => setWorstFirst(!worstFirst)}
+              aria-pressed={worstFirst}
+              title="Best = most quota left, soonest reset, fewest tokens. Accounts without data stay last."
+              className="rounded border border-slate-800 px-2 py-1 text-slate-400 hover:bg-slate-800 hover:text-slate-200"
+            >
+              {worstFirst ? "WORST FIRST" : "BEST FIRST"}
+            </button>
+          </div>
           {accounts.length === 0 && <p className="font-mono text-xs text-slate-500">No Claude profiles found.</p>}
           <ul className="flex flex-col gap-3">
-            {accounts.map((a) => (
-              <li key={a.profile} className="rounded border border-slate-800 bg-slate-900/60 p-2">
-                <div className="mb-2 flex items-center justify-between font-mono text-xs">
-                  <span className="text-slate-200">{a.profile ? `~/.claude-${a.profile.toLowerCase()}` : "~/.claude"}</span>
-                  <span className="text-[10px] text-slate-500">{SQUAWK[a.tier]}</span>
-                </div>
-                <div className="flex flex-col gap-2">
-                  <Window label="5-HOUR" w={a.fiveHour} />
-                  <Window label="WEEKLY" w={a.weekly} />
-                </div>
-                <div className="mt-2 font-mono text-[10px] text-slate-500">{a.updatedAt ? `read ${ago(a.updatedAt)}` : "no usage mirror (TRACON_QUOTA)"}</div>
-              </li>
-            ))}
+            {sorted.map((a, i) => {
+              const d = i > 0 && sort !== "profile" ? gap(sort, sorted[i - 1], a) : undefined;
+              return (
+                <li key={a.profile}>
+                  {d !== undefined && (
+                    <div className="-mt-1 mb-2 text-center font-mono text-[10px] text-slate-500">
+                      Δ {GAP[sort as Exclude<SortKey, "profile">](d)} {SORTS[sort].label.toLowerCase()}
+                    </div>
+                  )}
+                  <div className="rounded border border-slate-800 bg-slate-900/60 p-2">
+                    <div className="mb-2 flex items-center justify-between font-mono text-xs">
+                      <span className="text-slate-200">{a.profile ? `~/.claude-${a.profile.toLowerCase()}` : "~/.claude"}</span>
+                      <span className="text-[10px] text-slate-500">{SQUAWK[a.tier]}</span>
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <Window label="5-HOUR" w={a.fiveHour} />
+                      <Window label="WEEKLY" w={a.weekly} />
+                    </div>
+                    <div className="mt-2 font-mono text-[10px] text-slate-500">{tokens(a.tokens)} tok in window · {a.updatedAt ? `read ${ago(a.updatedAt)}` : "no usage mirror (TRACON_QUOTA)"}</div>
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         </div>
       )}

@@ -7,6 +7,7 @@ import { FleetBar } from "./components/fleet/FleetBar.tsx";
 import { FlightCard } from "./components/fleet/FlightCard.tsx";
 import { FlightDag } from "./components/radar/FlightDag.tsx";
 import { isLocal, savePairToken, token, wsUrl } from "./lib/remote.ts";
+import { useTheme } from "./lib/theme.ts";
 
 /** Pairs this device from a pasted `tracon pair` link: the iOS Home Screen app cannot open the link itself. */
 function PairForm() {
@@ -84,6 +85,7 @@ export default function App() {
   const { flights, accounts, decisions, away, online } = useAirspace();
   const focus = useFocusedDecision();
   const alerts = useHoldingAlerts(flights);
+  const theme = useTheme();
   const [traced, setTraced] = useState<string>();
   const tracedFlight = flights.find((f) => f.flightCallsign === traced);
   const [, setNow] = useState(0);
@@ -96,10 +98,10 @@ export default function App() {
     <div className="flex min-h-screen bg-slate-950 text-slate-200">
       <AccountsRail accounts={accounts} />
       <div className="min-w-0 flex-1">
-        <FleetBar flights={flights} online={online} alerts={alerts} away={away} />
+        <FleetBar flights={flights} online={online} alerts={alerts} away={away} theme={theme} />
         <main className="mx-auto max-w-7xl p-4">
           <DecisionInbox decisions={decisions} focus={focus} />
-          {tracedFlight && <FlightDag key={tracedFlight.flightCallsign} flight={tracedFlight} onClose={() => setTraced(undefined)} />}
+          {tracedFlight && <FlightDag key={tracedFlight.flightCallsign} flight={tracedFlight} theme={theme.theme} onClose={() => setTraced(undefined)} />}
           {flights.length === 0 ? (
             <div className="mt-24 text-center font-mono text-sm text-slate-500">
               {online

@@ -49,7 +49,7 @@ Built and judged 2026-10-16. I read PLAN.md, findings.md, README.md and combo_of
 
 - **Fixed: finished subagents showed `running` forever.** Every Claude subagent transcript on this Mac (18 of 18) ends with a `SubagentHandback` call and its result, and no `turn_end`. The normalizer now treats that result as the end of the turn, so the subagent lands and its DAG node gets an end time. `toolAction` no longer files `SubagentHandback` as a spawn. On real data (3-day window): 0 subagent nodes left running; CL-BIZ-CF5A's 3 now end.
 - **Built: p4_1 TCAS** (`collision.ts`). Two flights writing one file within 5 minutes get `collisionWarning`, a red card with the shared file, and one `TCAS:` line per pair in `tracon status`. Writes only; a subagent's writes count as its parent's. Checked with a two-session demo home in headless Chrome.
-- **Built: quota source** (`quota.ts`, `TRACON_QUOTA="HAT=/path/usage.md"`). Reads the 5-hour percentage from a statusline-usage.py mirror until its window resets. Only the `hat` profile writes a mirror today, and its last reading (15 Oct) has expired, so the gauge still reads n/a until that status line runs again.
+- **Built: quota source** (`quota.ts`, `TRACON_QUOTA="HAT=/path/usage-hat.md"`). Reads the 5-hour percentage from a statusline-usage.py mirror until its window resets. Only the `hat` profile writes a mirror today, and its last reading (15 Oct) has expired, so the gauge still reads n/a until that status line runs again.
 - Proof: `scripts/check.sh` passes all 7 steps; 21 tests (6 new, 2 of them fail on the old normalizer).
 
 ## Update (2026-10-17, partner app)

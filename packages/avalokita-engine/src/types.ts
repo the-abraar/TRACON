@@ -54,7 +54,7 @@ export interface TraceNode {
 
 /** What a parser extracts from one transcript line, independent of runtime. */
 export type ParsedEvent =
-  | { kind: "prompt"; ts: number; cwd?: string }
+  | { kind: "prompt"; ts: number; cwd?: string; text?: string }
   | { kind: "thinking"; ts: number; cwd?: string; usage?: Usage }
   | { kind: "tool_use"; ts: number; cwd?: string; usage?: Usage; tools: ToolCall[] }
   | { kind: "tool_result"; ts: number; cwd?: string; toolUseIds: string[]; running?: boolean }
@@ -107,6 +107,8 @@ export interface Account {
   tier: AccountTier;
   fiveHour?: QuotaWindow;
   weekly?: QuotaWindow;
+  /** tokens used by this profile's sessions and subagents in the activity window */
+  tokens: number;
   /** ISO time of the mirror's last reading */
   updatedAt?: string;
 }

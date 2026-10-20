@@ -1,7 +1,8 @@
-import { Bell, BellOff, Radar, Smartphone } from "lucide-react";
+import { Bell, BellOff, Moon, Radar, Smartphone, Sun } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { AwayMode, FlightPacket, Snapshot } from "../../../../avalokita-engine/src/types.ts";
 import { enablePush, pushStatus, type PushStatus } from "../../lib/push.ts";
+import type { Theme } from "../../lib/theme.ts";
 import { post } from "../../lib/remote.ts";
 import { tokens } from "./FlightCard.tsx";
 
@@ -59,7 +60,8 @@ interface Alerts {
   blocked: boolean;
 }
 
-export function FleetBar({ flights, online, alerts, away }: { flights: FlightPacket[]; online: boolean; alerts: Alerts; away: Snapshot["away"] }) {
+export function FleetBar({ flights, online, alerts, away, theme }: { flights: FlightPacket[]; online: boolean; alerts: Alerts; away: Snapshot["away"]; theme: { theme: Theme; toggle: () => void } }) {
+  const ThemeIcon = theme.theme === "dark" ? Sun : Moon;
   const BellIcon = alerts.enabled ? Bell : BellOff;
   const airborne = flights.filter((f) => f.flightState !== "landed" && f.flightState !== "aborted").length;
   const holding = flights.filter((f) => f.flightState === "holding").length;
@@ -97,6 +99,15 @@ export function FleetBar({ flights, online, alerts, away }: { flights: FlightPac
           >
             <BellIcon className="h-3.5 w-3.5" aria-hidden />
             ALERTS {alerts.enabled ? "ON" : "OFF"}
+          </button>
+          <button
+            type="button"
+            onClick={theme.toggle}
+            title={`Switch to ${theme.theme === "dark" ? "light" : "dark"} mode`}
+            className="flex items-center gap-1 self-center rounded border border-slate-700 px-2 py-1 font-mono text-[10px] tracking-widest text-slate-400 hover:border-amber-400"
+          >
+            <ThemeIcon className="h-3.5 w-3.5" aria-hidden />
+            {theme.theme === "dark" ? "LIGHT" : "DARK"}
           </button>
         </div>
         <div className="w-full">

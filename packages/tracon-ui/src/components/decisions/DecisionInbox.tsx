@@ -57,7 +57,7 @@ function DecisionCard({ d, focused }: { d: Decision; focused: boolean }) {
           <div className="flex items-center gap-2">
             <Icon className="h-4 w-4 shrink-0 text-amber-300" aria-hidden />
             <span className="font-mono text-base font-bold text-slate-100">{d.callsign}</span>
-            <span className="rounded bg-amber-500 px-1.5 font-mono text-[10px] font-semibold text-slate-950">{label}</span>
+            <span className="rounded bg-amber-500 px-1.5 font-mono text-[10px] font-semibold text-black">{label}</span>
           </div>
           <div className="mt-0.5 truncate font-mono text-xs text-slate-500" title={d.cwd}>
             {d.cwd.split("/").slice(-2).join("/") || "unknown cwd"} · waiting {since(d.createdAt)}
@@ -128,7 +128,7 @@ function QuestionForm({ d, busy, send }: FormProps) {
           />
         </fieldset>
       ))}
-      <button type="submit" disabled={busy || !answer} className={`${btn} border-amber-400 bg-amber-500 font-semibold text-slate-950`}>
+      <button type="submit" disabled={busy || !answer} className={`${btn} border-amber-400 bg-amber-500 font-semibold text-black`}>
         SEND ANSWER
       </button>
     </form>
@@ -145,7 +145,7 @@ function PlanForm({ d, busy, send }: FormProps) {
         <button type="button" disabled={busy} onClick={() => send({ id: d.id, kind: "plan", approve: false, feedback })} className={`${btn} flex items-center justify-center gap-1 border-red-700 text-red-200`}>
           <X className="h-3.5 w-3.5" aria-hidden /> REJECT
         </button>
-        <button type="button" disabled={busy} onClick={() => send({ id: d.id, kind: "plan", approve: true })} className={`${btn} flex items-center justify-center gap-1 border-emerald-500 bg-emerald-600 font-semibold text-slate-950`}>
+        <button type="button" disabled={busy} onClick={() => send({ id: d.id, kind: "plan", approve: true })} className={`${btn} flex items-center justify-center gap-1 border-emerald-500 bg-emerald-600 font-semibold text-black`}>
           <Check className="h-3.5 w-3.5" aria-hidden /> APPROVE
         </button>
       </div>
@@ -168,7 +168,7 @@ function PermissionForm({ d, busy, send }: FormProps) {
         <button type="button" disabled={busy} onClick={() => send({ id: d.id, kind: "permission", allow: false, message })} className={`${btn} flex items-center justify-center gap-1 border-red-700 text-red-200`}>
           <X className="h-3.5 w-3.5" aria-hidden /> DENY
         </button>
-        <button type="button" disabled={busy} onClick={() => send({ id: d.id, kind: "permission", allow: true })} className={`${btn} flex items-center justify-center gap-1 border-emerald-500 bg-emerald-600 font-semibold text-slate-950`}>
+        <button type="button" disabled={busy} onClick={() => send({ id: d.id, kind: "permission", allow: true })} className={`${btn} flex items-center justify-center gap-1 border-emerald-500 bg-emerald-600 font-semibold text-black`}>
           <Check className="h-3.5 w-3.5" aria-hidden /> ALLOW
         </button>
       </div>

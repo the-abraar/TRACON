@@ -31,7 +31,7 @@ export function parseAgyLine(line: string): ParsedEvent | null {
 
   switch (o.type) {
     case "USER_INPUT":
-      return { kind: "prompt", ts };
+      return { kind: "prompt", ts, text: typeof o.content === "string" ? o.content : undefined };
     case "PLANNER_RESPONSE": {
       const usage = { key: `step-${o.step_index}`, input: o.input_tokens ?? 0, output: o.output_tokens ?? 0 };
       const tools: ToolCall[] = (o.tool_calls ?? []).map((t: any, i: number) => ({
