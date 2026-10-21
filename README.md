@@ -16,7 +16,7 @@
 
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Status: Phase 2](https://img.shields.io/badge/Status-Phase_2_(engine_%2B_radar_deck)-yellow.svg)](judge.md)
-[![Platform: macOS / Linux](https://img.shields.io/badge/Platform-macOS%20%7C%20Linux-black.svg)]()
+[![Platform: macOS](https://img.shields.io/badge/Platform-macOS-black.svg)]()
 
 </div>
 
@@ -183,7 +183,7 @@ flowchart TD
 
 ## ⚡ Quick Start
 
-Needs Node.js 23.6 or newer (the engine is TypeScript run by Node's type stripping). Not published to npm or Homebrew; run it from the repo.
+Needs Node.js 23.6 or newer (the engine is TypeScript run by Node's type stripping). Not published to npm. The Homebrew formula above installs release `beta_0.1`, which predates `pair`, `hooks` and `away`; for those, run it from the repo.
 
 ```bash
 npm ci
@@ -240,7 +240,7 @@ Permission prompts are always listed: Claude Code shows its own dialog at the sa
 
 **Setup** (once):
 1. Install [Tailscale](https://tailscale.com/download) on the Mac and on each device, signed in to the same tailnet. Nothing is exposed to the internet.
-2. `tracon start` (keep it running; keep the Mac awake, e.g. with `products/Caffeinate-my-mac`).
+2. `tracon start` (keep it running; keep the Mac awake, e.g. with [Caffeinate-my-mac](https://github.com/the-abraar/Caffeinate-my-mac)).
 3. `tracon hooks install`: adds two HTTP hooks to every profile's `settings.json` (backups go to `~/.config/tracon/backups`). New sessions use them; `tracon hooks uninstall` removes exactly those two. **Installed hooks before 2026-10-19? Run `tracon hooks install` again**: the old hooks don't send the local secret (see Security), so the engine refuses them and every prompt stays at the terminal until you do.
 4. `tracon pair`: prints the `tailscale serve` line to run once, then a link and QR code. Open it on each device:
    - **iPhone/iPad**: Safari > Share > Add to Home Screen, open TRACON from the Home Screen, tap ENABLE PUSH (web push on iOS works only from the Home Screen app).
