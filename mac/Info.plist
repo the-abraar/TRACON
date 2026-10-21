@@ -21,6 +21,18 @@
     <!-- menu bar only: no Dock icon -->
     <key>LSUIElement</key>
     <true/>
+    <!-- tracon://deck[#d=<decisionId>] from the widgets opens the Flight Deck -->
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLName</key>
+            <string>com.abraar.tracon</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>tracon</string>
+            </array>
+        </dict>
+    </array>
     <key>NSAppTransportSecurity</key>
     <dict>
         <key>NSAllowsLocalNetworking</key>
