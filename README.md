@@ -14,7 +14,7 @@
 ### **Terminal Radar Approach Control for Autonomous AI Agent Fleets**
 *Powered by the **Avalokita Telemetry Engine** — The Thousand-Eyed Observer.*
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Status: Phase 2](https://img.shields.io/badge/Status-Phase_2_(engine_%2B_radar_deck)-yellow.svg)](judge.md)
 [![Platform: macOS / Linux](https://img.shields.io/badge/Platform-macOS%20%7C%20Linux-black.svg)]()
 
@@ -296,4 +296,4 @@ TRACON ATC merges the precision and safety-critical discipline of aerospace engi
 
 ## 📄 License
 
-MIT © 2026 TRACON ATC Contributors.
+Apache License 2.0 © 2026 TRACON ATC Contributors. See [LICENSE](LICENSE).

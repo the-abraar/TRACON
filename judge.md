@@ -136,7 +136,7 @@ No new commits since f8c244d (the Host-header and bad-percent-encoding fixes), s
 
 1. Done 2026-10-19 (see Fixed above): local secret, subscriptions cleared on `--rotate`, short push bodies, with tests. Next, small: add `frame-ancestors 'none'` to the local deck's pages.
 2. Agent, about 2 h: show Write and Edit content on permission cards. When the server returns 401, clear the stored token and show the pair form.
-3. Owner, 1 h: add an MIT LICENSE file, a GitHub description and topics. Re-shoot the slides on a made-up home, and fix the README contradictions (line 186, the Linux badge, the Caffeinate path).
+3. Done 2026-10-21: Apache-2.0 LICENSE, GitHub description and topics. Still open, owner, 1 h: Re-shoot the slides on a made-up home, and fix the README contradictions (line 186, the Linux badge, the Caffeinate path).
 4. Agent and owner, half a day: cut `beta_0.2` from HEAD, update the tap formula, and add a brew `service` block or a launchd plist with KeepAlive. Add a top-level error handler and a GitHub Actions workflow that runs `scripts/check.sh`.
 5. Owner, 1 h: finish the iPhone push test in TODO.md, and answer a question, a plan and a permission from the phone.
 6. Owner: post one launch (Show HN, r/ClaudeAI) about the multi-account angle, then decide from stars and issues whether to keep investing.
