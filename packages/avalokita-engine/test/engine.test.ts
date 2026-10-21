@@ -497,7 +497,7 @@ test("server: state-changing local requests need the local secret; only the loca
     const secret = new State(stateDir).secret();
     for (const path of ["/api/away", "/api/answer", "/api/push/subscribe"]) {
       assert.equal((await post(path, { mode: "on" })).status, 403, path);
-      assert.equal((await post(path, { mode: "on" }, { "x-tracon-secret": secret.slice(0, -1) + "0" })).status, 403, path);
+      assert.equal((await post(path, { mode: "on" }, { "x-tracon-secret": secret.slice(0, -1) + (secret.endsWith("0") ? "1" : "0") })).status, 403, path);
     }
     assert.equal((await post("/api/away", { mode: "on" }, { "x-tracon-secret": secret })).status, 200);
     assert.equal((await fetch(`${eng.url}/api/flights`)).status, 200, "reading needs no secret");
