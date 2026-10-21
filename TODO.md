@@ -27,9 +27,9 @@ Setup is done, apart from push on the phone. Design and spike results: PLAN.md s
 - [ ] Decide what to do with the untracked `dev/agy_autostrategy.md`. It's from 14:50 on 2026-10-17, before this work started, and was left alone.
 
 ### Done
-- [x] Tailscale on the Mac (`abraars-macbook-pro`, 100.124.124.14) and the iPhone 15 (100.81.75.72).
+- [x] Tailscale on the Mac and the iPhone 15.
 - [x] `tracon hooks install`: all 5 profiles, backups in `~/.config/tracon/backups`, and `ensure_caveman.py check` still ALL GOOD (it won't strip them). Undo with `tracon hooks uninstall`.
-- [x] Tailscale Serve enabled and running: `https://abraars-macbook-pro.tail09801e.ts.net/` → `127.0.0.1:4041`. Turn it off with `tailscale serve --https=443 off`.
+- [x] Tailscale Serve enabled and running: `https://<mac>.<tailnet>.ts.net/` → `127.0.0.1:4041`. Turn it off with `tailscale serve --https=443 off`.
 - [x] `tracon pair`: the iPhone opened the link and sees the app. The token hasn't been rotated; rotate it with `tracon pair --rotate` if the link leaks.
 
 ### Notes
