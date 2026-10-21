@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Widget extensions must be sandboxed. -->
+    <key>com.apple.security.app-sandbox</key>
+    <true/>
+    <!-- GET http://127.0.0.1:4040/api/flights -->
+    <key>com.apple.security.network.client</key>
+    <true/>
+    <!-- the sort the menu bar app chose (ViewPrefs); no App Group needed for ad-hoc signing -->
+    <key>com.apple.security.temporary-exception.files.home-relative-path.read-only</key>
+    <array>
+        <string>/Library/Application Support/TRACON/</string>
+    </array>
+</dict>
+</plist>
