@@ -197,6 +197,18 @@ scripts/check.sh                               # typecheck, read-only guard, tes
 
 `npm start` keeps running in the foreground; stop it with Ctrl-C. `tracon start --no-open` skips opening the browser.
 
+**Start at login** (macOS launchd; restarts the engine if it dies). `scripts/com.blackbird.tracon.plist` runs `tracon start --no-open` from the repo and logs to `~/Library/Logs/tracon.log`. Its paths are absolute: edit the node path (`command -v node`) and `WorkingDirectory` to match your machine, and run `npm run build -w tracon-ui` once so the engine has a Flight Deck to serve. Then:
+
+```bash
+cp scripts/com.blackbird.tracon.plist ~/Library/LaunchAgents/
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.blackbird.tracon.plist
+launchctl print gui/$(id -u)/com.blackbird.tracon | grep -E 'state|pid'   # running, with a pid
+launchctl kickstart -k gui/$(id -u)/com.blackbird.tracon                  # restart after pulling new code
+launchctl bootout gui/$(id -u)/com.blackbird.tracon                       # stop it and disable until next bootstrap
+```
+
+Stop a hand-started engine first, or the launchd one can't bind the port and keeps retrying.
+
 ### Using the Flight Deck
 
 - **Fleet bar**: flights on the radar, how many are airborne or holding, and the total burn rate.

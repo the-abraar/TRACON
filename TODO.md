@@ -22,7 +22,7 @@ Setup is done, apart from push on the phone. Design and spike results: PLAN.md s
 
 ### Housekeeping
 - [x] (done in `3b12d51`) Commit the fixes made after 94d03fa: `App.tsx` (pair form), `lib/remote.ts` (`savePairToken`), `lib/push.ts` (re-send the subscription), and `test/ui.test.ts` (a `savePairToken` test). `scripts/check.sh` passes all 7 steps.
-- [ ] Make the engine start at login (a launchd agent, or the Homebrew service) so the phone doesn't go dark after a reboot.
+- [x] Make the engine start at login (a launchd agent, or the Homebrew service) so the phone doesn't go dark after a reboot. Done 2026-10-24: launchd agent `com.blackbird.tracon` (`scripts/com.blackbird.tracon.plist`, installed in `~/Library/LaunchAgents`, log `~/Library/Logs/tracon.log`); README "Start at login". KeepAlive checked: a killed engine came back in about 6 s.
 - [ ] Put `tracon` on PATH (`npm link` in `packages/tracon-cli`, or the Homebrew install from the README). For now it's `node packages/tracon-cli/bin/tracon.js`.
 - [ ] Decide what to do with the untracked `dev/agy_autostrategy.md`. It's from 14:50 on 2026-10-17, before this work started, and was left alone.
 
