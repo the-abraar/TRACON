@@ -197,6 +197,8 @@ scripts/check.sh                               # typecheck, read-only guard, tes
 
 `npm start` keeps running in the foreground; stop it with Ctrl-C. `tracon start --no-open` skips opening the browser.
 
+**`tracon` on PATH**: `cd packages/tracon-cli && npm link` puts a `tracon` command (a symlink to this checkout) in npm's global bin, so `tracon status` works from any directory. `npm unlink -g tracon-cli` removes it.
+
 **Start at login** (macOS launchd; restarts the engine if it dies). `scripts/com.blackbird.tracon.plist` runs `tracon start --no-open` from the repo and logs to `~/Library/Logs/tracon.log`. Its paths are absolute: edit the node path (`command -v node`) and `WorkingDirectory` to match your machine, and run `npm run build -w tracon-ui` once so the engine has a Flight Deck to serve. Then:
 
 ```bash

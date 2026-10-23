@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 // tracon [tui] | start [--no-open] | status | away auto|on|off | pair [--rotate] | hooks install|uninstall
 // (needs Node >= 23.6 unless you use the compiled binary: the engine is TypeScript run by Node's type stripping)
 import { execFileSync, spawn } from "node:child_process";
