@@ -213,7 +213,8 @@ export async function startEngine(opts: EngineOptions = {}) {
     // only the page served on the local port (Host already checked) carries the secret; the remote one never does
     if (!remote && extname(file) === ".html")
       body = Buffer.from(body.toString("utf8").replace("<head>", `<head><meta name="tracon-secret" content="${state.secret()}">`));
-    res.writeHead(200, { "content-type": TYPES[extname(file)] ?? "application/octet-stream" }).end(body);
+    // no site may frame the deck and trick a click on Allow
+    res.writeHead(200, { "content-type": TYPES[extname(file)] ?? "application/octet-stream", "content-security-policy": "frame-ancestors 'none'", "x-frame-options": "DENY" }).end(body);
   };
 
   const listen = async (remote: boolean, p: number) => {
@@ -239,10 +240,14 @@ export async function startEngine(opts: EngineOptions = {}) {
   // the poll finds new profiles/sessions, moves time-based states (holding after 60s, leaving the window), reads the
   // keyboard idle time for auto-away, and lets go of permission prompts the terminal already answered
   const poll = setInterval(async () => {
-    const next = isAway(mode, await idle());
-    if (next !== away) setAway(next);
-    sweep();
-    refresh();
+    try {
+      const next = isAway(mode, await idle());
+      if (next !== away) setAway(next);
+      sweep();
+      refresh();
+    } catch (e) {
+      console.error("tracon: poll failed:", e); // an unreadable transcript must not stop the engine
+    }
   }, 2000);
 
   return {

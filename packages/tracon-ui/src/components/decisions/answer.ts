@@ -30,3 +30,14 @@ export function permissionTarget(d: Decision): string {
   const v = i.command ?? i.file_path ?? i.url ?? i.pattern ?? i.path;
   return typeof v === "string" ? v : JSON.stringify(i, null, 1);
 }
+
+/** What a Write or Edit would put in the file, so a phone never approves a blind file change; undefined for other tools. */
+export function permissionBody(d: Decision): string | undefined {
+  const i = d.input as Record<string, unknown>;
+  if (d.tool === "Write" && typeof i.content === "string") return i.content;
+  if (d.tool === "Edit" && typeof i.old_string === "string" && typeof i.new_string === "string") {
+    const prefix = (sign: string, t: string) => t.split("\n").map((l) => sign + l).join("\n");
+    return `${prefix("-", i.old_string)}\n${prefix("+", i.new_string)}`;
+  }
+  return undefined;
+}

@@ -83,7 +83,7 @@ test("newlyHolding: alerts on entry into holding, once per cooldown", () => {
 });
 
 test("questionAnswer: picks and Other text joined like Claude Code's dialog; undefined until every question is answered", async () => {
-  const { questionAnswer, permissionTarget } = await import("../src/components/decisions/answer.ts");
+  const { questionAnswer, permissionTarget, permissionBody } = await import("../src/components/decisions/answer.ts");
   const d = {
     id: "d1",
     callsign: "CL-T",
@@ -106,6 +106,10 @@ test("questionAnswer: picks and Other text joined like Claude Code's dialog; und
   });
   assert.deepEqual(questionAnswer(d, { Color: ["Red"], Toppings: [] }, { Color: "teal", Toppings: "none" }), { id: "d1", kind: "question", answers: { Color: "teal", Toppings: "none" } });
   assert.equal(permissionTarget({ ...d, kind: "permission", tool: "Bash", input: { command: "ls -la", description: "List" } }), "ls -la");
+  const perm = { ...d, kind: "permission" as const };
+  assert.equal(permissionBody({ ...perm, tool: "Write", input: { file_path: "/a", content: "hi\nthere" } }), "hi\nthere");
+  assert.equal(permissionBody({ ...perm, tool: "Edit", input: { file_path: "/a", old_string: "a\nb", new_string: "c" } }), "-a\n-b\n+c");
+  assert.equal(permissionBody({ ...perm, tool: "Bash", input: { command: "ls" } }), undefined);
   assert.equal(permissionTarget({ ...d, kind: "permission", tool: "X", input: { a: 1 } }), '{\n "a": 1\n}');
 });
 
@@ -138,4 +142,20 @@ test("sortAccounts: best or worst first, accounts without the data last", () => 
   assert.equal(gap("fiveLeft", list[0], list[2]), 60);
   assert.equal(gap("fiveLeft", list[0], list[1]), undefined, "no data, no gap");
   assert.equal(gap("profile", list[0], list[2]), undefined);
+});
+
+test("api: a 401 clears the stored token and reloads into the pair form", async () => {
+  const store = new Map([["tracon.token", "a".repeat(64)]]);
+  let reloaded = 0;
+  const stub = {
+    localStorage: { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => store.set(k, v), removeItem: (k: string) => store.delete(k) },
+    document: { querySelector: () => null },
+    location: { reload: () => reloaded++ },
+    fetch: async () => new Response("{}", { status: 401 }),
+  };
+  for (const [k, value] of Object.entries(stub)) Object.defineProperty(globalThis, k, { value, configurable: true, writable: true });
+  const { api, token } = await import("../src/lib/remote.ts");
+  assert.equal((await api("/api/flights")).status, 401);
+  assert.equal(token(), undefined);
+  assert.equal(reloaded, 1);
 });

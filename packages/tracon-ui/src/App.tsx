@@ -6,7 +6,7 @@ import { AccountsRail } from "./components/fleet/AccountsRail.tsx";
 import { FleetBar } from "./components/fleet/FleetBar.tsx";
 import { FlightCard } from "./components/fleet/FlightCard.tsx";
 import { FlightDag } from "./components/radar/FlightDag.tsx";
-import { isLocal, savePairToken, token, wsUrl } from "./lib/remote.ts";
+import { api, isLocal, savePairToken, token, wsUrl } from "./lib/remote.ts";
 import { useTheme } from "./lib/theme.ts";
 
 /** Pairs this device from a pasted `tracon pair` link: the iOS Home Screen app cannot open the link itself. */
@@ -51,6 +51,7 @@ function useAirspace() {
       ws.onmessage = (m) => setSnap(JSON.parse(m.data));
       ws.onclose = () => {
         setOnline(false);
+        if (token()) api("/api/flights").catch(() => {}); // a rotated token gets 401 here, and api() then shows the pair form
         if (!stopped) retry = window.setTimeout(connect, 1500);
       };
     };

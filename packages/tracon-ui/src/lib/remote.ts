@@ -36,12 +36,22 @@ export const isLocal = () => /^(localhost|127\.0\.0\.1)$/.test(location.hostname
 // requests there must carry it.
 const secret = () => document.querySelector<HTMLMetaElement>('meta[name="tracon-secret"]')?.content;
 
-export function api(path: string, init: RequestInit = {}): Promise<Response> {
+/** The engine refused this token (rotated or revoked): forget it and reload, so the pair form shows. */
+function forgetToken(): void {
+  try {
+    localStorage.removeItem(KEY);
+  } catch {}
+  location.reload();
+}
+
+export async function api(path: string, init: RequestInit = {}): Promise<Response> {
   const t = token(), s = secret();
-  return fetch(path, {
+  const r = await fetch(path, {
     ...init,
     headers: { ...(init.body ? { "content-type": "application/json" } : {}), ...(t ? { authorization: `Bearer ${t}` } : {}), ...(s ? { "x-tracon-secret": s } : {}) },
   });
+  if (r.status === 401 && t) forgetToken();
+  return r;
 }
 
 export const post = (path: string, body: unknown) => api(path, { method: "POST", body: JSON.stringify(body) });

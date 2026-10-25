@@ -502,6 +502,7 @@ test("server: state-changing local requests need the local secret; only the loca
     assert.equal((await post("/api/away", { mode: "on" }, { "x-tracon-secret": secret })).status, 200);
     assert.equal((await fetch(`${eng.url}/api/flights`)).status, 200, "reading needs no secret");
 
+    for (const base of [eng.url, eng.remoteUrl]) assert.equal((await fetch(`${base}/`)).headers.get("content-security-policy"), "frame-ancestors 'none'");
     const page = await (await fetch(`${eng.url}/`)).text();
     assert.ok(page.includes(`<head><meta name="tracon-secret" content="${secret}">`));
     assert.ok(!(await (await fetch(`${eng.remoteUrl}/`)).text()).includes(secret), "the page on the remote port never carries it");

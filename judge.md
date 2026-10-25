@@ -140,3 +140,9 @@ No new commits since f8c244d (the Host-header and bad-percent-encoding fixes), s
 4. Agent and owner, half a day: cut `beta_0.2` from HEAD, update the tap formula, and add a brew `service` block or a launchd plist with KeepAlive. Add a top-level error handler and a GitHub Actions workflow that runs `scripts/check.sh`.
 5. Owner, 1 h: finish the iPhone push test in TODO.md, and answer a question, a plan and a permission from the phone.
 6. Owner: post one launch (Show HN, r/ClaudeAI) about the multi-account angle, then decide from stars and issues whether to keep investing.
+
+## Next steps (2026-10-25)
+
+1. Done 2026-10-25: `frame-ancestors 'none'` (and `X-Frame-Options: DENY`) on every page both listeners serve, with a test. Write content and an Edit diff show on permission cards. A 401 clears the stored token and reloads into the pair form (gaps 4 partly, 7). The CLI logs `uncaughtException` / `unhandledRejection` and keeps running, and the engine poll catches its own errors (gap 6, partly). `.github/workflows/check.yml` runs `scripts/check.sh` on push and PR (not yet pushed, so it has never run on GitHub).
+2. Still open from gap 4: a diff view is plain `-`/`+` lines, and MCP tool JSON is unchanged. Gap 6: still no launchd or brew service with KeepAlive.
+3. Items 3 to 6 of the 2026-10-19 list are unchanged.

@@ -37,6 +37,9 @@ function tailscale(...args) {
   return undefined;
 }
 
+// A stray error must not take the engine down with held prompts: log it and keep serving (held prompts time out on their own).
+for (const ev of ["uncaughtException", "unhandledRejection"]) process.on(ev, (e) => console.error(`tracon: ${ev}:`, e));
+
 if (cmd === "start") {
   const { startEngine } = await engine();
   const { url, remoteUrl } = await startEngine({ port, remotePort, uiFiles });
