@@ -83,7 +83,7 @@ test("newlyHolding: alerts on entry into holding, once per cooldown", () => {
 });
 
 test("questionAnswer: picks and Other text joined like Claude Code's dialog; undefined until every question is answered", async () => {
-  const { questionAnswer, permissionTarget, permissionBody } = await import("../src/components/decisions/answer.ts");
+  const { questionAnswer, permissionTarget, permissionBody, permissionDiff } = await import("../src/components/decisions/answer.ts");
   const d = {
     id: "d1",
     callsign: "CL-T",
@@ -108,9 +108,16 @@ test("questionAnswer: picks and Other text joined like Claude Code's dialog; und
   assert.equal(permissionTarget({ ...d, kind: "permission", tool: "Bash", input: { command: "ls -la", description: "List" } }), "ls -la");
   const perm = { ...d, kind: "permission" as const };
   assert.equal(permissionBody({ ...perm, tool: "Write", input: { file_path: "/a", content: "hi\nthere" } }), "hi\nthere");
-  assert.equal(permissionBody({ ...perm, tool: "Edit", input: { file_path: "/a", old_string: "a\nb", new_string: "c" } }), "-a\n-b\n+c");
+  assert.equal(permissionBody({ ...perm, tool: "Edit", input: { file_path: "/a", old_string: "a", new_string: "c" } }), undefined);
+  const diff = (old_string: string, new_string: string) =>
+    permissionDiff({ ...perm, tool: "Edit", input: { file_path: "/a", old_string, new_string } })?.map((l) => l.op + l.text);
+  assert.deepEqual(diff("a\nb", "c"), ["-a", "-b", "+c"]);
+  assert.deepEqual(diff("x\nold\ny\nz", "x\nnew\nmore\ny\nz"), [" x", "-old", "+new", "+more", " y", " z"], "shared lines are context");
+  assert.deepEqual(diff("a\na", "a\na\na"), [" a", " a", "+a"], "head and tail never overlap");
+  assert.equal(permissionDiff({ ...perm, tool: "Write", input: { file_path: "/a", content: "x" } }), undefined);
+  assert.equal(permissionTarget({ ...perm, tool: "mcp__gh__create_issue", input: { path: "o/r", body: "b" } }), '{\n  "path": "o/r",\n  "body": "b"\n}', "MCP input shown whole");
   assert.equal(permissionBody({ ...perm, tool: "Bash", input: { command: "ls" } }), undefined);
-  assert.equal(permissionTarget({ ...d, kind: "permission", tool: "X", input: { a: 1 } }), '{\n "a": 1\n}');
+  assert.equal(permissionTarget({ ...d, kind: "permission", tool: "X", input: { a: 1 } }), '{\n  "a": 1\n}');
 });
 
 test("savePairToken: takes the token from a pasted pair link or bare token, rejects anything else", async () => {

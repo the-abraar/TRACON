@@ -2,7 +2,7 @@ import { Check, ClipboardList, KeyRound, MessageCircleQuestion, X, type LucideIc
 import { useEffect, useRef, useState } from "react";
 import type { Answer, Decision } from "../../../../avalokita-engine/src/types.ts";
 import { post } from "../../lib/remote.ts";
-import { permissionBody, permissionTarget, questionAnswer, questionsOf } from "./answer.ts";
+import { permissionBody, permissionDiff, permissionTarget, questionAnswer, questionsOf } from "./answer.ts";
 
 const KIND: Record<Decision["kind"], { label: string; icon: LucideIcon }> = {
   question: { label: "QUESTION", icon: MessageCircleQuestion },
@@ -153,9 +153,12 @@ function PlanForm({ d, busy, send }: FormProps) {
   );
 }
 
+const DIFF = { " ": "", "-": "bg-red-950/60 text-red-200", "+": "bg-emerald-950/60 text-emerald-200" };
+
 function PermissionForm({ d, busy, send }: FormProps) {
   const [message, setMessage] = useState("");
   const body = permissionBody(d);
+  const diff = permissionDiff(d);
   const desc = typeof d.input.description === "string" ? d.input.description : undefined;
   return (
     <div className="grid gap-2">
@@ -165,6 +168,16 @@ function PermissionForm({ d, busy, send }: FormProps) {
       </div>
       <pre className="max-h-60 overflow-auto whitespace-pre-wrap break-all rounded bg-slate-950/70 p-3 text-xs text-slate-200">{permissionTarget(d)}</pre>
       {body !== undefined && <pre aria-label="File content" className="max-h-72 overflow-auto whitespace-pre-wrap break-all rounded bg-slate-950/70 p-3 text-xs text-slate-300">{body}</pre>}
+      {diff && (
+        <pre aria-label="Edit diff" className="max-h-72 overflow-auto whitespace-pre-wrap break-all rounded bg-slate-950/70 py-2 text-xs text-slate-400">
+          {diff.map((l, n) => (
+            <div key={n} className={`px-3 ${DIFF[l.op]}`}>
+              {l.op}
+              {l.text}
+            </div>
+          ))}
+        </pre>
+      )}
       <input className={input} aria-label="Reason if you deny" placeholder="Reason (sent if you deny)" value={message} onChange={(e) => setMessage(e.target.value)} />
       <div className="grid grid-cols-2 gap-2">
         <button type="button" disabled={busy} onClick={() => send({ id: d.id, kind: "permission", allow: false, message })} className={`${btn} flex items-center justify-center gap-1 border-red-700 text-red-200`}>

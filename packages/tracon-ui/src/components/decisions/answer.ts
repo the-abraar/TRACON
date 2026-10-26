@@ -24,20 +24,41 @@ export function questionAnswer(d: Decision, picked: Record<string, string[]>, ot
   return Object.keys(answers).length ? { id: d.id, kind: "question", answers } : undefined;
 }
 
-/** What a permission prompt is about: the command, file, URL or, failing those, the raw input. */
+/** What a permission prompt is about: the command, file, URL or, failing those, the raw input. MCP tools always show
+ * their whole input, indented, since any field (not just a path) can matter. */
 export function permissionTarget(d: Decision): string {
   const i = d.input as Record<string, unknown>;
   const v = i.command ?? i.file_path ?? i.url ?? i.pattern ?? i.path;
-  return typeof v === "string" ? v : JSON.stringify(i, null, 1);
+  return typeof v === "string" && !d.tool.startsWith("mcp__") ? v : JSON.stringify(i, null, 2);
 }
 
-/** What a Write or Edit would put in the file, so a phone never approves a blind file change; undefined for other tools. */
+/** What a Write would put in the file, so a phone never approves a blind file change; undefined for other tools. */
 export function permissionBody(d: Decision): string | undefined {
   const i = d.input as Record<string, unknown>;
-  if (d.tool === "Write" && typeof i.content === "string") return i.content;
-  if (d.tool === "Edit" && typeof i.old_string === "string" && typeof i.new_string === "string") {
-    const prefix = (sign: string, t: string) => t.split("\n").map((l) => sign + l).join("\n");
-    return `${prefix("-", i.old_string)}\n${prefix("+", i.new_string)}`;
-  }
-  return undefined;
+  return d.tool === "Write" && typeof i.content === "string" ? i.content : undefined;
+}
+
+export interface DiffLine {
+  op: " " | "-" | "+";
+  text: string;
+}
+
+/** An Edit as diff lines: lines shared at the start and end are context, the rest is removed then added. */
+// shortcut: prefix/suffix match, not a full LCS, so scattered changes show as one block; use a diff library if that confuses.
+export function permissionDiff(d: Decision): DiffLine[] | undefined {
+  const i = d.input as Record<string, unknown>;
+  if (d.tool !== "Edit" || typeof i.old_string !== "string" || typeof i.new_string !== "string") return undefined;
+  const a = i.old_string.split("\n");
+  const b = i.new_string.split("\n");
+  let head = 0;
+  while (head < a.length && head < b.length && a[head] === b[head]) head++;
+  let tail = 0;
+  while (tail < a.length - head && tail < b.length - head && a[a.length - 1 - tail] === b[b.length - 1 - tail]) tail++;
+  const lines = (op: DiffLine["op"], t: string[]) => t.map((text) => ({ op, text }));
+  return [
+    ...lines(" ", a.slice(0, head)),
+    ...lines("-", a.slice(head, a.length - tail)),
+    ...lines("+", b.slice(head, b.length - tail)),
+    ...lines(" ", a.slice(a.length - tail)),
+  ];
 }
