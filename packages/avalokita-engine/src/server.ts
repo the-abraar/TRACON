@@ -182,7 +182,18 @@ export async function startEngine(opts: EngineOptions = {}) {
   }
 
   const localOk = (req: IncomingMessage) => state.secretOk(req.headers[SECRET_HEADER] as string | undefined);
-  const handler = (remote: boolean) => (req: IncomingMessage, res: ServerResponse) => {
+  // Top-level catch for every request: a throw answers 500 instead of leaving the client hanging. Claude Code treats a
+  // non-2xx hook reply as no answer and asks at the terminal, so a broken engine fails open.
+  const handler = (remote: boolean) => async (req: IncomingMessage, res: ServerResponse) => {
+    try {
+      await route(remote, req, res);
+    } catch (e) {
+      console.error(`tracon: ${req.method} ${req.url} failed:`, e);
+      if (!res.headersSent) json(res, 500, { error: "engine error" });
+      else res.end();
+    }
+  };
+  const route = async (remote: boolean, req: IncomingMessage, res: ServerResponse) => {
     if (!remote && !LOCAL_HOST.test(req.headers.host ?? "")) return json(res, 403, { error: "foreign host" });
     const url = new URL(req.url ?? "/", "http://x");
     let path: string;
@@ -195,13 +206,13 @@ export async function startEngine(opts: EngineOptions = {}) {
       if (remote || req.method !== "POST" || req.headers.origin) return json(res, 404, { error: "not found" });
       // refused at once, before anything is held: Claude Code treats a non-2xx reply as no answer and asks at the terminal
       if (!localOk(req)) return json(res, 403, { error: "missing or wrong local secret: run tracon hooks install" });
-      return void hook(req, res);
+      return hook(req, res);
     }
     if (path.startsWith("/api/")) {
       if (remote && !state.tokenOk(req.headers.authorization?.replace(/^Bearer /, ""))) return json(res, 401, { error: "pair this device: tracon pair" });
       if (!remote && req.method === "POST" && req.headers.origin && !LOCAL_ORIGIN.test(req.headers.origin)) return json(res, 403, { error: "foreign origin" });
       if (!remote && req.method === "POST" && !localOk(req)) return json(res, 403, { error: "missing or wrong local secret" });
-      return void api(path, url, req, res);
+      return api(path, url, req, res);
     }
     let file = opts.uiFiles ? (opts.uiFiles[path] ?? opts.uiFiles["/index.html"]) : resolve(uiDist, "." + path);
     if (!opts.uiFiles && (!file.startsWith(uiDist + sep) || !existsSync(file) || statSync(file).isDirectory())) file = join(uiDist, "index.html");

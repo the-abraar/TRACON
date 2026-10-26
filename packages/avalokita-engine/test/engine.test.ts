@@ -510,3 +510,15 @@ test("server: state-changing local requests need the local secret; only the loca
     eng.close();
   }
 });
+
+test("server: a request that throws gets a 500 at once and the engine keeps serving", async () => {
+  const stateDir = mkdtempSync(join(tmp, "state-"));
+  const eng = await startEngine({ port: 0, remotePort: 0, home: fakeHome(), windowMs: Number.MAX_SAFE_INTEGER, uiDist: join(tmp, "no-ui"), stateDir, idle: async () => { throw new Error("ioreg broke"); }, env: {} });
+  try {
+    const res = await fetch(`${eng.url}/api/away`, { method: "POST", headers: { "x-tracon-secret": new State(stateDir).secret() }, body: JSON.stringify({ mode: "on" }), signal: AbortSignal.timeout(2000) });
+    assert.equal(res.status, 500);
+    assert.equal((await fetch(`${eng.url}/api/flights`)).status, 200);
+  } finally {
+    eng.close();
+  }
+});
