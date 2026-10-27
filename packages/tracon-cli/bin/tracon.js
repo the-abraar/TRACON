@@ -1,13 +1,15 @@
 #!/usr/bin/env node
-// tracon [tui] | start [--no-open] | status | away auto|on|off | pair [--rotate] | hooks install|uninstall
+// tracon [tui] | start [--no-open] | status | away auto|on|off | pair [--rotate] | hooks install|uninstall | service install|uninstall|status [--dry-run]
 // (needs Node >= 23.6 unless you use the compiled binary: the engine is TypeScript run by Node's type stripping)
 import { execFileSync, spawn } from "node:child_process";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { applyHooks } from "../src/hooks.js";
 import { alertLines, flightRow, HEAD, heldLines, row, summary } from "../src/view.js";
 
-const USAGE = "usage: tracon [tui] | start [--no-open] | status | away auto|on|off | pair [--rotate] | hooks install|uninstall";
+const USAGE = "usage: tracon [tui] | start [--no-open] | status | away auto|on|off | pair [--rotate] | hooks install|uninstall | service install|uninstall|status [--dry-run]";
 const [cmd = "tui", ...flags] = process.argv.slice(2);
 const port = Number(process.env.TRACON_PORT ?? 4040);
 const remotePort = Number(process.env.TRACON_REMOTE_PORT ?? 4041);
@@ -90,6 +92,45 @@ if (cmd === "start") {
   const install = flags[0] === "install";
   for (const line of applyHooks(dirs, install ? port : undefined, install ? st.secret() : undefined, backups)) console.log(line);
   if (install) console.log(`Backups of changed files: ${backups}. New sessions send held prompts to the engine; restart running sessions to be sure they do.`);
+} else if (cmd === "service" && ["install", "uninstall", "status"].includes(flags[0])) {
+  if (process.platform !== "darwin") (console.error("tracon service is macOS only (launchd)."), process.exit(1));
+  const { LABEL, logPath, onPath, plist, plistPath, serviceState } = await import("../src/service.js");
+  const dry = flags.includes("--dry-run"); // prints what it would do; touches neither the file nor launchd
+  const file = plistPath(homedir());
+  const domain = `gui/${process.getuid()}`;
+  const launchctl = (...args) => {
+    if (dry && args[0] !== "print") return void console.log(`would run: launchctl ${args.join(" ")}`);
+    try {
+      return execFileSync("launchctl", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+    } catch {
+      return undefined;
+    }
+  };
+  if (flags[0] === "status") {
+    const state = serviceState(launchctl("print", `${domain}/${LABEL}`));
+    console.log(state ? `${LABEL}: ${state} (${file}; log ${logPath(homedir())})` : `${LABEL}: not loaded. Install with: tracon service install`);
+  } else {
+    launchctl("bootout", `${domain}/${LABEL}`); // stop the old one; fails harmlessly if none is loaded
+    if (flags[0] === "uninstall") {
+      if (dry) console.log(`would remove: ${file}`);
+      else (rmSync(file, { force: true }), console.log(`Removed ${file}. The engine no longer starts at login.`));
+    } else {
+      // the compiled binary is its own program; from source, node runs this file
+      const PATH = process.env.PATH;
+      const program = [...(uiFiles ? [onPath("tracon", PATH, process.execPath)] : [onPath("node", PATH, process.execPath), fileURLToPath(import.meta.url)]), "start", "--no-open"];
+      const body = plist(program, logPath(homedir()));
+      if (dry) console.log(`would write ${file}:\n${body}`);
+      else {
+        mkdirSync(dirname(file), { recursive: true });
+        writeFileSync(file, body);
+      }
+      let ok = launchctl("bootstrap", domain, file);
+      // a bootout finishes asynchronously, so the first bootstrap can fail with "Input/output error"
+      for (let i = 0; !dry && ok === undefined && i < 5; i++) await new Promise((r) => setTimeout(r, 1000)), (ok = launchctl("bootstrap", domain, file));
+      if (!dry && ok === undefined) (console.error(`launchctl bootstrap failed. Try: launchctl bootstrap ${domain} ${file}`), process.exit(1));
+      if (!dry) console.log(`Installed ${file}: the engine starts at login and restarts if it dies. Log: ${logPath(homedir())}. Check: tracon service status`);
+    }
+  }
 } else {
   console.error(USAGE);
   process.exit(2);

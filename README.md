@@ -199,17 +199,16 @@ scripts/check.sh                               # typecheck, read-only guard, tes
 
 **`tracon` on PATH**: `cd packages/tracon-cli && npm link` puts a `tracon` command (a symlink to this checkout) in npm's global bin, so `tracon status` works from any directory. `npm unlink -g tracon-cli` removes it.
 
-**Start at login** (macOS launchd; restarts the engine if it dies). `scripts/com.blackbird.tracon.plist` runs `tracon start --no-open` from the repo and logs to `~/Library/Logs/tracon.log`. Its paths are absolute: edit the node path (`command -v node`) and `WorkingDirectory` to match your machine, and run `npm run build -w tracon-ui` once so the engine has a Flight Deck to serve. Then:
+**Start at login** (macOS launchd; restarts the engine if it dies). Run `npm run build -w tracon-ui` once (from source) so the engine has a Flight Deck to serve, then:
 
 ```bash
-cp scripts/com.blackbird.tracon.plist ~/Library/LaunchAgents/
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.blackbird.tracon.plist
-launchctl print gui/$(id -u)/com.blackbird.tracon | grep -E 'state|pid'   # running, with a pid
-launchctl kickstart -k gui/$(id -u)/com.blackbird.tracon                  # restart after pulling new code
-launchctl bootout gui/$(id -u)/com.blackbird.tracon                       # stop it and disable until next bootstrap
+tracon service install     # writes ~/Library/LaunchAgents/com.blackbird.tracon.plist (KeepAlive, RunAtLoad) and loads it; re-run after moving the checkout or node
+tracon service status      # running, with a pid; log: ~/Library/Logs/tracon.log
+launchctl kickstart -k gui/$(id -u)/com.blackbird.tracon   # restart after pulling new code
+tracon service uninstall   # stop it and remove the plist
 ```
 
-Stop a hand-started engine first, or the launchd one can't bind the port and keeps retrying.
+`tracon service install --dry-run` prints the plist and the launchctl commands without running them. Stop a hand-started engine first, or the launchd one can't bind the port and keeps retrying.
 
 ### Using the Flight Deck
 
