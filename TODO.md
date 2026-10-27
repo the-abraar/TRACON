@@ -5,7 +5,7 @@
 Setup is done, apart from push on the phone. Design and spike results: PLAN.md section 8.
 
 ### Start here tomorrow
-- [ ] **Is the engine still running?** It was started by hand (`nohup node packages/tracon-cli/bin/tracon.js start --no-open`), with nothing set to restart it after a reboot or crash. Check with `lsof -nP -iTCP:4040 -sTCP:LISTEN`. If nothing's listening, start it again. `tailscale serve` survives a restart; check it with `tailscale serve status`.
+- [ ] **Install the engine as a service** (one line, restarts the engine once): `tracon service install && tracon service status`. It replaces the hand-copied `com.blackbird.tracon` plist (same label) with one the CLI writes; KeepAlive and RunAtLoad as before. On 2026-10-27 the old agent was already loaded and running (`launchctl list` showed pid 709), so this is a tidy-up, not a rescue. Undo: `tracon service uninstall`. `tailscale serve` is separate; check it with `tailscale serve status`.
 - [ ] **Push is blocked: the engine has no subscription from the iPhone.** `~/.config/tracon/subscriptions.json` is `[]`, even though the app's notifications button shows "on".
   - Known so far: the engine side works. A probe POST to `/api/push/subscribe` over the tailnet was saved, then removed. The button's "on" used to reflect only the phone's own registration, so it never showed whether the engine had it.
   - Fix in place, not committed: `pushStatus()` in `packages/tracon-ui/src/lib/push.ts` now re-sends the device's subscription on every open, so "on" means the engine has it.
@@ -22,7 +22,7 @@ Setup is done, apart from push on the phone. Design and spike results: PLAN.md s
 
 ### Housekeeping
 - [x] (done in `3b12d51`) Commit the fixes made after 94d03fa: `App.tsx` (pair form), `lib/remote.ts` (`savePairToken`), `lib/push.ts` (re-send the subscription), and `test/ui.test.ts` (a `savePairToken` test). `scripts/check.sh` passes all 7 steps.
-- [x] Make the engine start at login (a launchd agent, or the Homebrew service) so the phone doesn't go dark after a reboot. Done 2026-10-24: launchd agent `com.blackbird.tracon` (`scripts/com.blackbird.tracon.plist`, installed in `~/Library/LaunchAgents`, log `~/Library/Logs/tracon.log`); README "Start at login". KeepAlive checked: a killed engine came back in about 6 s.
+- [x] Make the engine start at login (a launchd agent, or the Homebrew service) so the phone doesn't go dark after a reboot. Done 2026-10-24: launchd agent `com.blackbird.tracon` (hand-copied plist, installed in `~/Library/LaunchAgents`, log `~/Library/Logs/tracon.log`); README "Start at login" (now `tracon service install`, 2026-10-27). KeepAlive checked: a killed engine came back in about 6 s.
 - [x] Put `tracon` on PATH (`npm link` in `packages/tracon-cli`, or the Homebrew install from the README). Done 2026-10-24: `npm link` (`/opt/homebrew/bin/tracon` → this checkout); `bin/tracon.js` got its missing `#!/usr/bin/env node` line.
 - [ ] Decide what to do with the untracked `dev/agy_autostrategy.md`. It's from 14:50 on 2026-10-17, before this work started, and was left alone.
 
