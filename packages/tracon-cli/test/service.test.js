@@ -25,6 +25,7 @@ test("the plist keeps the engine alive, starts at login, logs, and escapes paths
 test("the plist carries the shell's TRACON_* settings, and only those", () => {
   const env = traconEnv({ TRACON_PORT: "5050", TRACON_STATE: "/s&t", HOME: "/h", CLAUDE_CONFIG_DIR: "/c" });
   assert.deepEqual(env, { TRACON_PORT: "5050", TRACON_STATE: "/s&t" });
+  assert.deepEqual(traconEnv({ TRACON_STATE: "st" }, "/w"), { TRACON_STATE: "/w/st" }, "launchd runs the agent elsewhere");
   const body = plist(["/node"], "/log", env);
   assert.match(body, /<key>EnvironmentVariables<\/key>\s*<dict>\s*<key>TRACON_PORT<\/key>\s*<string>5050<\/string>\s*<key>TRACON_STATE<\/key>\s*<string>\/s&amp;t<\/string>\s*<\/dict>/);
   assert.doesNotMatch(plist(["/node"], "/log"), /EnvironmentVariables/);

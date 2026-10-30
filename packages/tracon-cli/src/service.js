@@ -1,6 +1,6 @@
 // macOS LaunchAgent that starts the engine at login and restarts it if it dies (`tracon service install`).
 import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 // The label the hand-copied plist used before `tracon service` existed, so an install replaces that one instead of racing it for the port.
 export const LABEL = "com.blackbird.tracon";
@@ -14,8 +14,14 @@ export const onPath = (name, PATH, fallback) =>
 
 const xml = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
-/** The TRACON_* settings of `env`, so the agent runs on the ports and state dir of the shell that installed it. */
-export const traconEnv = (env) => Object.fromEntries(Object.entries(env).filter(([k, v]) => k.startsWith("TRACON_") && v !== undefined));
+/** The TRACON_* settings of `env`, so the agent runs on the ports and state dir of the shell that installed it.
+ * A relative TRACON_STATE is made absolute: launchd starts the agent in another directory. */
+export const traconEnv = (env, cwd = process.cwd()) =>
+  Object.fromEntries(
+    Object.entries(env)
+      .filter(([k, v]) => k.startsWith("TRACON_") && v !== undefined)
+      .map(([k, v]) => [k, k === "TRACON_STATE" ? resolve(cwd, v) : v]),
+  );
 
 /** The plist for `program` (absolute argv), with KeepAlive, RunAtLoad, stdout/stderr to `log` and `env` as its environment. */
 export function plist(program, log, env = {}) {
