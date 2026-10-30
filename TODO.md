@@ -17,8 +17,8 @@ Setup is done, apart from push on the phone. Design and spike results: PLAN.md s
 - [ ] Push on a real phone (blocked by the item above).
 - [ ] The paste-the-link pairing form on the iPhone Home Screen app. You paired, so it probably worked, but nobody checked which way the pairing happened. Added because iOS Home Screen apps have their own storage, separate from Safari, so the `#pair=` token Safari saved never reached the app (every request got a 401).
 - [ ] A plan approval and a permission prompt answered from the phone. They were tested only from the "phone" port on the Mac, never on a real device.
-- [ ] Do sessions disappear when they've been stuck a long time? The app's empty screen says "no agent session active in the last 30 minutes", and `HOLD_MAX_MS` in `decisions.ts` is about 58 minutes. Check whether a session holding longer than that still shows in the inbox, the app and `tracon status`, and what happens to its prompt.
-- [ ] Answering Antigravity prompts. You can see them but not answer them yet.
+- [x] Do sessions disappear when they've been stuck a long time? Answered from the code 2026-10-30 (issue #4): a Claude card stays while its process runs (pid in `sessions/<pid>.json`), whatever the 30-minute window; profiles without pid files and Antigravity drop out after 30 minutes without a transcript line. The held prompt stays in the inbox and `tracon status` until `HOLD_MAX_MS` (about 58 min), then goes back to the terminal dialog, before Claude Code's own 3600 s hook timeout. Not a bug.
+- [ ] Answering Antigravity prompts. You can see them but not answer them yet. Needs the owner (2026-10-30): no agy approval prompt has ever been captured, and agy has no known hook to hold one, so first catch one live and record what agy writes.
 
 ### Housekeeping
 - [x] (done in `3b12d51`) Commit the fixes made after 94d03fa: `App.tsx` (pair form), `lib/remote.ts` (`savePairToken`), `lib/push.ts` (re-send the subscription), and `test/ui.test.ts` (a `savePairToken` test). `scripts/check.sh` passes all 7 steps.
