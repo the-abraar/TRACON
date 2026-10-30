@@ -94,7 +94,7 @@ if (cmd === "start") {
   if (install) console.log(`Backups of changed files: ${backups}. New sessions send held prompts to the engine; restart running sessions to be sure they do.`);
 } else if (cmd === "service" && ["install", "uninstall", "status"].includes(flags[0])) {
   if (process.platform !== "darwin") (console.error("tracon service is macOS only (launchd)."), process.exit(1));
-  const { LABEL, logPath, onPath, plist, plistPath, serviceState } = await import("../src/service.js");
+  const { LABEL, logPath, onPath, plist, plistPath, serviceState, traconEnv } = await import("../src/service.js");
   const dry = flags.includes("--dry-run"); // prints what it would do; touches neither the file nor launchd
   const file = plistPath(homedir());
   const domain = `gui/${process.getuid()}`;
@@ -118,7 +118,7 @@ if (cmd === "start") {
       // the compiled binary is its own program; from source, node runs this file
       const PATH = process.env.PATH;
       const program = [...(uiFiles ? [onPath("tracon", PATH, process.execPath)] : [onPath("node", PATH, process.execPath), fileURLToPath(import.meta.url)]), "start", "--no-open"];
-      const body = plist(program, logPath(homedir()));
+      const body = plist(program, logPath(homedir()), traconEnv(process.env));
       if (dry) console.log(`would write ${file}:\n${body}`);
       else {
         mkdirSync(dirname(file), { recursive: true });

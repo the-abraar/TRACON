@@ -208,7 +208,7 @@ launchctl kickstart -k gui/$(id -u)/com.blackbird.tracon   # restart after pulli
 tracon service uninstall   # stop it and remove the plist
 ```
 
-`tracon service install --dry-run` prints the plist and the launchctl commands without running them. Stop a hand-started engine first, or the launchd one can't bind the port and keeps retrying.
+`tracon service install --dry-run` prints the plist and the launchctl commands without running them. The `TRACON_*` variables set in the installing shell (`TRACON_PORT`, `TRACON_REMOTE_PORT`, `TRACON_STATE`, ...) go into the plist's `EnvironmentVariables`, so set them before you install. Stop a hand-started engine first, or the launchd one can't bind the port and keeps retrying.
 
 ### Using the Flight Deck
 

@@ -154,3 +154,11 @@ No new commits since f8c244d (the Host-header and bad-percent-encoding fixes), s
 - **Correction to the note above:** the launchd agent *is* loaded on this Mac. `launchctl list` showed `com.blackbird.tracon` running as pid 709, listening on 4040. Nothing was installed, loaded, stopped or restarted in this round. Owner step (optional tidy-up, restarts the engine once): `tracon service install`.
 - **Gap 4:** nothing to do. The earlier 2026-10-27 round already shows MCP input as indented JSON and Edit as a colored diff. Still open: a MultiEdit card shows only its path.
 - **Still open:** the brew `service` block (waits for `beta_0.2` and the tap). `TRACON_PORT` is not carried into the plist, so a non-default port needs an `EnvironmentVariables` edit by hand. CI has never run on GitHub (not pushed).
+
+## Update (2026-10-30, agent round)
+
+- **MultiEdit cards (gap 4 closed):** each edit shows as a diff under an `@@ edit n of m` line; an Edit or MultiEdit edit with `replace_all` says ", every match" (PR #2, issue #1). Tests in `packages/tracon-ui/test/ui.test.ts`. Not checked in a browser or on a phone.
+- **`TRACON_PORT` in the plist:** `tracon service install` copies every `TRACON_*` variable of the installing shell into the plist's `EnvironmentVariables` (issue #3). Tests: the plist with variables passes `plutil -lint`, and `install --dry-run` on a temp HOME with `TRACON_PORT=5050` prints it. Nothing was installed or restarted; the running agent keeps its old plist until the owner re-runs `tracon service install`.
+- **Stuck sessions (`HOLD_MAX_MS`), answered from the code, not a live run** (issue #4, closed): a Claude card stays while its process runs; the held prompt goes back to the terminal after about 58 min, before Claude Code's 3600 s hook timeout. Not a bug. Profiles without `sessions/<pid>.json`, and agy, drop their card after 30 minutes, while a held entry stays in the inbox.
+- **Antigravity answers:** skipped. No agy approval prompt has been captured and agy has no known hook, so it needs the owner to catch one live first.
+- `scripts/check.sh` passes all 7 steps, 49 tests.
