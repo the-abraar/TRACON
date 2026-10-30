@@ -44,14 +44,20 @@ export interface DiffLine {
   text: string;
 }
 
-/** An Edit as diff lines, or a MultiEdit as one block per edit under an "@@ edit n of m" line; undefined for other tools. */
+/** An Edit as diff lines, or a MultiEdit as one block per edit under an "@@ edit n of m" line; undefined for other tools.
+ * A `replace_all` edit says so, since it changes every match, not just the one shown. */
 export function permissionDiff(d: Decision): DiffLine[] | undefined {
   const i = d.input as Record<string, unknown>;
-  if (d.tool === "Edit") return editDiff(i);
+  const every = (e: Record<string, unknown>) => (e?.replace_all === true ? ", every match" : "");
+  if (d.tool === "Edit") {
+    const diff = editDiff(i);
+    return diff && every(i) ? [{ op: "@", text: "@ edit" + every(i) }, ...diff] : diff;
+  }
   if (d.tool !== "MultiEdit" || !Array.isArray(i.edits)) return undefined;
-  const parts = i.edits.map((e) => editDiff(e as Record<string, unknown>));
+  const edits = i.edits as Record<string, unknown>[];
+  const parts = edits.map(editDiff);
   if (parts.some((p) => !p)) return undefined; // a malformed edit, which Claude Code rejects anyway
-  return parts.flatMap((p, n) => [{ op: "@" as const, text: `@ edit ${n + 1} of ${parts.length}` }, ...p!]);
+  return parts.flatMap((p, n) => [{ op: "@" as const, text: `@ edit ${n + 1} of ${parts.length}${every(edits[n])}` }, ...p!]);
 }
 
 /** Lines shared at the start and end are context, the rest is removed then added. */
