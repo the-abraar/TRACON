@@ -153,7 +153,7 @@ function PlanForm({ d, busy, send }: FormProps) {
   );
 }
 
-const DIFF = { " ": "", "-": "bg-red-950/60 text-red-200", "+": "bg-emerald-950/60 text-emerald-200" };
+const DIFF = { " ": "", "-": "bg-red-950/60 text-red-200", "+": "bg-emerald-950/60 text-emerald-200", "@": "text-cyan-300" };
 
 function PermissionForm({ d, busy, send }: FormProps) {
   const [message, setMessage] = useState("");
