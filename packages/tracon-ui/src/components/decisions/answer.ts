@@ -39,15 +39,31 @@ export function permissionBody(d: Decision): string | undefined {
 }
 
 export interface DiffLine {
-  op: " " | "-" | "+";
+  /** "@" heads each edit of a MultiEdit */
+  op: " " | "-" | "+" | "@";
   text: string;
 }
 
-/** An Edit as diff lines: lines shared at the start and end are context, the rest is removed then added. */
-// shortcut: prefix/suffix match, not a full LCS, so scattered changes show as one block; use a diff library if that confuses.
+/** An Edit as diff lines, or a MultiEdit as one block per edit under an "@@ edit n of m" line; undefined for other tools.
+ * A `replace_all` edit says so, since it changes every match, not just the one shown. */
 export function permissionDiff(d: Decision): DiffLine[] | undefined {
   const i = d.input as Record<string, unknown>;
-  if (d.tool !== "Edit" || typeof i.old_string !== "string" || typeof i.new_string !== "string") return undefined;
+  const every = (e: Record<string, unknown>) => (e?.replace_all === true ? ", every match" : "");
+  if (d.tool === "Edit") {
+    const diff = editDiff(i);
+    return diff && every(i) ? [{ op: "@", text: "@ edit" + every(i) }, ...diff] : diff;
+  }
+  if (d.tool !== "MultiEdit" || !Array.isArray(i.edits)) return undefined;
+  const edits = i.edits as Record<string, unknown>[];
+  const parts = edits.map(editDiff);
+  if (parts.some((p) => !p)) return undefined; // a malformed edit, which Claude Code rejects anyway
+  return parts.flatMap((p, n) => [{ op: "@" as const, text: `@ edit ${n + 1} of ${parts.length}${every(edits[n])}` }, ...p!]);
+}
+
+/** Lines shared at the start and end are context, the rest is removed then added. */
+// shortcut: prefix/suffix match, not a full LCS, so scattered changes show as one block; use a diff library if that confuses.
+function editDiff(i: Record<string, unknown>): DiffLine[] | undefined {
+  if (typeof i?.old_string !== "string" || typeof i.new_string !== "string") return undefined;
   const a = i.old_string.split("\n");
   const b = i.new_string.split("\n");
   let head = 0;

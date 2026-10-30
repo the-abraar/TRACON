@@ -115,6 +115,12 @@ test("questionAnswer: picks and Other text joined like Claude Code's dialog; und
   assert.deepEqual(diff("x\nold\ny\nz", "x\nnew\nmore\ny\nz"), [" x", "-old", "+new", "+more", " y", " z"], "shared lines are context");
   assert.deepEqual(diff("a\na", "a\na\na"), [" a", " a", "+a"], "head and tail never overlap");
   assert.equal(permissionDiff({ ...perm, tool: "Write", input: { file_path: "/a", content: "x" } }), undefined);
+  const multi = (edits: unknown) => permissionDiff({ ...perm, tool: "MultiEdit", input: { file_path: "/a", edits } })?.map((l) => l.op + l.text);
+  assert.deepEqual(multi([{ old_string: "a", new_string: "b" }, { old_string: "x\ny", new_string: "x\nz" }]), ["@@ edit 1 of 2", "-a", "+b", "@@ edit 2 of 2", " x", "-y", "+z"]);
+  assert.equal(multi([{ old_string: "a" }]), undefined, "a malformed edit shows no diff");
+  assert.equal(multi("nope"), undefined);
+  assert.deepEqual(multi([{ old_string: "a", new_string: "b", replace_all: true }]), ["@@ edit 1 of 1, every match", "-a", "+b"]);
+  assert.deepEqual(permissionDiff({ ...perm, tool: "Edit", input: { file_path: "/a", old_string: "a", new_string: "b", replace_all: true } })?.map((l) => l.op + l.text), ["@@ edit, every match", "-a", "+b"]);
   assert.equal(permissionTarget({ ...perm, tool: "mcp__gh__create_issue", input: { path: "o/r", body: "b" } }), '{\n  "path": "o/r",\n  "body": "b"\n}', "MCP input shown whole");
   assert.equal(permissionBody({ ...perm, tool: "Bash", input: { command: "ls" } }), undefined);
   assert.equal(permissionTarget({ ...d, kind: "permission", tool: "X", input: { a: 1 } }), '{\n  "a": 1\n}');
