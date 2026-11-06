@@ -1,0 +1,9 @@
+reviews:
+  profile: assertive
+  path_instructions:
+    - path: "packages/**"
+      instructions: |
+        Reads ~/.claude* sessions and must stay read-only. Flag any write to those dirs, path traversal, and leaking session content (prompts, tokens) to logs or network.
+
+tone_instructions: |
+  Be concise, direct, and constructive.
