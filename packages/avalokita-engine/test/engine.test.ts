@@ -522,3 +522,15 @@ test("server: a request that throws gets a 500 at once and the engine keeps serv
     eng.close();
   }
 });
+
+test("redact masks quoted JSON and shell-quoted secrets", () => {
+  assert.equal(promptSummary(`curl -d '{"token": "abc123"}'`), `curl -d '{"token": "***"}'`);
+  assert.equal(promptSummary(`{"api_key": "sk-live-1", "x": 1}`), `{"api_key": "***", "x": 1}`);
+  assert.equal(promptSummary("password=hunter2 next"), "password=*** next");
+});
+
+test("redact masks quoted values with spaces, passwd, and Bearer tokens", () => {
+  assert.equal(promptSummary(`{"password": "my pass, word", "n": 1}`), `{"password": "***", "n": 1}`);
+  assert.equal(promptSummary("curl -H 'Authorization: Bearer abc.def-1' x"), "curl -H 'Authorization: *** ***' x");
+  assert.equal(promptSummary("passwd=x"), "passwd=***");
+});

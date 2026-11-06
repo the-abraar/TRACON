@@ -44,7 +44,11 @@ export function promptSummary(text: string): string {
   return redact(s.replace(/\s+/g, " ").trim()).slice(0, 160);
 }
 
-const redact = (s: string) => s.replace(/(api[_-]?key|token|secret|password)(\s*[=:]\s*)\S+/gi, "$1$2***");
+// Masks key=value / "key": "value" secrets (quoted values may hold spaces or commas) and Bearer tokens.
+const redact = (s: string) => s
+  .replace(/\bBearer\s+[\w.~+/=-]+/gi, "Bearer ***")
+  .replace(/(api[_-]?key|token|secret|passw(?:or)?d|authorization)(["']?\s*[=:]\s*)("[^"]*"|'[^']*'|[^\s"',}]+)/gi,
+    (_, k, sep, v) => `${k}${sep}${/^["']/.test(v) ? v[0] + "***" + v[0] : "***"}`);
 
 function describe(t: ToolCall): NonNullable<FlightPacket["activeTool"]> {
   const i = t.input;
