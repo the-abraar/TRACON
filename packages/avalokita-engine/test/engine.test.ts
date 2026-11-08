@@ -300,9 +300,21 @@ test("airspace drops sessions outside the activity window", () => {
   assert.equal(air.tick(T0 + 10 * 60_000).length, 0);
 });
 
+/** Opens a socket and reports "open" (with the protocol the server picked), the HTTP status it was refused with, or "error". */
+const wsOutcome = (url: string, protocols: string[] = [], opts: { origin?: string; headers?: Record<string, string> } = {}) =>
+  new Promise<string | number>((ok) => {
+    const ws = new WebSocket(url, protocols, opts);
+    ws.on("open", () => (ok(`open:${ws.protocol}`), ws.close()))
+      .on("unexpected-response", (req, res) => (ok(res.statusCode ?? 0), req.destroy()))
+      .on("error", () => ok("error"));
+  });
+
 test("server: /api/flights snapshot, live WebSocket push, foreign origins refused", async () => {
   const home = fakeHome();
-  const eng = await startEngine({ port: 0, remotePort: 0, home, windowMs: Number.MAX_SAFE_INTEGER, uiDist: join(tmp, "no-ui"), stateDir: mkdtempSync(join(tmp, "state-")), env: {} });
+  const stateDir = mkdtempSync(join(tmp, "state-"));
+  const eng = await startEngine({ port: 0, remotePort: 0, home, windowMs: Number.MAX_SAFE_INTEGER, uiDist: join(tmp, "no-ui"), stateDir, env: {} });
+  const secret = new State(stateDir).secret();
+  const wsBase = eng.url.replace("http", "ws") + "/ws";
   try {
     const snap = (await (await fetch(`${eng.url}/api/flights`)).json()) as { flights: unknown[] };
     assert.equal(snap.flights.length, 2);
@@ -311,7 +323,7 @@ test("server: /api/flights snapshot, live WebSocket push, foreign origins refuse
     assert.deepEqual(tr.nodes.map((n) => n.kind), ["turn", "tool", "tool", "subagent"]);
     assert.equal((await fetch(`${eng.url}/api/trace?flight=nope`)).status, 404);
 
-    const ws = new WebSocket(eng.url.replace("http", "ws") + "/ws");
+    const ws = new WebSocket(wsBase, ["tracon", secret]); // what the deck sends: the secret from its page, as a subprotocol
     const msgs: any[] = [];
     const got = (n: number) =>
       new Promise<void>((ok, fail) => {
@@ -328,11 +340,17 @@ test("server: /api/flights snapshot, live WebSocket push, foreign origins refuse
     writeFileSync(join(proj, "ffff0000-0000-0000-0000-000000000000.jsonl"), lines("claude/session.jsonl").slice(2, 3).join("\n") + "\n");
     await got(2);
     assert.ok(msgs[1].flights.some((p: any) => p.flightCallsign === "CL-FFFF" && p.flightState === "preflight"));
+    assert.equal(ws.protocol, "tracon", "the server echoes only the fixed name, never the secret");
     ws.close();
 
-    const evil = new WebSocket(eng.url.replace("http", "ws") + "/ws", { origin: "https://evil.example" });
-    const outcome = await new Promise((ok) => evil.on("open", () => ok("open")).on("error", () => ok("refused")));
-    assert.equal(outcome, "refused");
+    // a page on another local port (a dev server, a notebook) passes the Origin check but has no secret
+    for (const origin of ["http://localhost:1234", "http://127.0.0.1:8888"]) {
+      assert.equal(await wsOutcome(wsBase, [], { origin }), 401, origin);
+      assert.equal(await wsOutcome(wsBase, ["tracon"], { origin }), 401, origin);
+      assert.equal(await wsOutcome(wsBase, ["tracon", "ab".repeat(32)], { origin }), 401, origin);
+    }
+    assert.equal(await wsOutcome(wsBase, ["tracon", secret], { origin: "http://localhost:5173" }), "open:tracon");
+    assert.equal(await wsOutcome(wsBase, ["tracon", secret], { origin: "https://evil.example" }), 401, "the secret does not excuse a foreign origin");
 
     // DNS rebinding: a page on evil.example resolved to 127.0.0.1 is same-origin, so only Host gives it away
     const status = (path: string, host: string) =>
@@ -343,8 +361,7 @@ test("server: /api/flights snapshot, live WebSocket push, foreign origins refuse
     assert.equal(await status("/api/flights", "evil.example:4040"), 403);
     assert.equal(await status("/api/flights", "localhost:4040"), 200);
     assert.equal(await status("/%E0%A4%A", "127.0.0.1"), 400);
-    const rebound = new WebSocket(eng.url.replace("http", "ws") + "/ws", { headers: { host: "evil.example" } });
-    assert.equal(await new Promise((ok) => rebound.on("open", () => ok("open")).on("error", () => ok("refused"))), "refused");
+    assert.equal(await wsOutcome(wsBase, ["tracon", secret], { headers: { host: "evil.example" } }), 401);
   } finally {
     eng.close();
   }
@@ -409,12 +426,18 @@ test("server: hooks hold decisions while away, a paired device answers, the remo
     assert.deepEqual(reply.hookSpecificOutput.updatedInput.answers, { Pick: "B" });
     assert.equal((await post(eng.remoteUrl, "/api/answer", { id: d.id, kind: "question", answers: { Pick: "B" } }, auth)).status, 409);
 
-    const opens = (url: string) =>
+    const opens = (url: string, protocols: string[] = [], headers: Record<string, string> = {}) =>
       new Promise((ok) => {
-        const ws = new WebSocket(url).on("message", () => (ok("open"), ws.close())).on("error", () => ok("refused"));
+        const ws = new WebSocket(url, protocols, { headers }).on("message", () => (ok("open"), ws.close())).on("error", () => ok("refused"));
       });
-    assert.equal(await opens(`${eng.remoteUrl.replace("http", "ws")}/ws`), "refused");
-    assert.equal(await opens(`${eng.remoteUrl.replace("http", "ws")}/ws?t=${token}`), "open");
+    const rws = `${eng.remoteUrl.replace("http", "ws")}/ws`;
+    assert.equal(await opens(rws), "refused");
+    assert.equal(await opens(rws, ["tracon", token]), "open", "the token rides in the subprotocol, out of the URL");
+    assert.equal(await opens(`${rws}?t=${token}`), "open", "decks cached before the subprotocol still connect for one release");
+    assert.equal(await opens(rws, ["tracon", "nope"]), "refused");
+    assert.equal(await opens(rws, ["tracon", local["x-tracon-secret"]]), "refused", "the local secret is not a device token");
+    assert.equal(await opens(rws, ["tracon", token], { host: "evil.example" }), "refused", "DNS rebinding onto the remote port");
+    assert.equal(await opens(rws, ["tracon", token], { host: "mac.tail0.ts.net" }), "open", "what tailscale serve forwards");
 
     // a page from another site cannot answer or reach the hooks through the local port
     assert.equal((await post(eng.url, "/api/away", { mode: "off" }, { origin: "https://evil.example" })).status, 403);
@@ -502,14 +525,42 @@ test("server: state-changing local requests need the local secret; only the loca
     assert.equal((await post("/api/away", { mode: "on" }, { "x-tracon-secret": secret })).status, 200);
     assert.equal((await fetch(`${eng.url}/api/flights`)).status, 200, "reading needs no secret");
 
-    for (const base of [eng.url, eng.remoteUrl]) assert.equal((await fetch(`${base}/`)).headers.get("content-security-policy"), "frame-ancestors 'none'");
+    for (const base of [eng.url, eng.remoteUrl]) {
+      const h = (await fetch(`${base}/`)).headers;
+      assert.equal(h.get("content-security-policy"), "frame-ancestors 'none'");
+      assert.equal(h.get("x-content-type-options"), "nosniff");
+      assert.equal(h.get("cache-control"), "no-store", "the page with the secret must not land in the browser's disk cache");
+    }
     const page = await (await fetch(`${eng.url}/`)).text();
     assert.ok(page.includes(`<head><meta name="tracon-secret" content="${secret}">`));
     assert.ok(!(await (await fetch(`${eng.remoteUrl}/`)).text()).includes(secret), "the page on the remote port never carries it");
+
+    // the remote port checks Host too: loopback and *.ts.net (what tailscale serve forwards), or TRACON_REMOTE_HOST
+    assert.equal(await statusWithHost(eng.remoteUrl, "/", "evil.example"), 403);
+    assert.equal(await statusWithHost(eng.remoteUrl, "/api/flights", "evil.example"), 403);
+    assert.equal(await statusWithHost(eng.remoteUrl, "/", "mac.tail0.ts.net"), 200);
+    assert.equal(await statusWithHost(eng.remoteUrl, "/", "127.0.0.1:4041"), 200);
+    assert.equal(await statusWithHost(eng.remoteUrl, "/api/flights", "mac.tail0.ts.net"), 401, "a good Host still needs the token");
   } finally {
     eng.close();
   }
+  const own = await startEngine({ port: 0, remotePort: 0, home, windowMs: Number.MAX_SAFE_INTEGER, uiDist: ui, stateDir, idle: async () => 0, env: { TRACON_REMOTE_HOST: "deck.example, other.example" } });
+  try {
+    assert.equal(await statusWithHost(own.remoteUrl, "/", "deck.example:443"), 200);
+    assert.equal(await statusWithHost(own.remoteUrl, "/", "Other.Example"), 200);
+    assert.equal(await statusWithHost(own.remoteUrl, "/", "mac.tail0.ts.net"), 403, "the override replaces the .ts.net rule");
+    assert.equal(await statusWithHost(own.remoteUrl, "/", "localhost"), 200);
+  } finally {
+    own.close();
+  }
 });
+
+function statusWithHost(base: string, path: string, host: string) {
+  return new Promise<number | undefined>((ok) => {
+    const u = new URL(base);
+    get({ hostname: u.hostname, port: u.port, path, headers: { host } }, (r) => (r.resume(), ok(r.statusCode))).on("error", () => ok(undefined));
+  });
+}
 
 test("server: a request that throws gets a 500 at once and the engine keeps serving", async () => {
   const stateDir = mkdtempSync(join(tmp, "state-"));

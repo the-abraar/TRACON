@@ -1,5 +1,5 @@
 // A paired device (reaching the engine through `tailscale serve`) sends the token from its `tracon pair` link with every
-// request; the deck on the Mac itself needs none.
+// request; the deck on the Mac itself sends the local secret from its page instead.
 const KEY = "tracon.token";
 
 /** Saves the token of a #pair=<token> link and takes it out of the address bar. */
@@ -56,7 +56,11 @@ export async function api(path: string, init: RequestInit = {}): Promise<Respons
 
 export const post = (path: string, body: unknown) => api(path, { method: "POST", body: JSON.stringify(body) });
 
-export function wsUrl(): string {
-  const t = token();
-  return `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws${t ? `?t=${t}` : ""}`;
+export const wsUrl = (): string => `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`;
+
+/** A browser cannot set headers on a WebSocket, so the credential goes as a subprotocol; the engine echoes only "tracon".
+ * Only the Mac's own page carries the secret, so it wins there even if a token was saved; elsewhere the device token. */
+export function wsProtocols(): string[] {
+  const c = secret() ?? token();
+  return c ? ["tracon", c] : ["tracon"];
 }

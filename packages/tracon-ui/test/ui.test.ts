@@ -172,3 +172,26 @@ test("api: a 401 clears the stored token and reloads into the pair form", async 
   assert.equal(token(), undefined);
   assert.equal(reloaded, 1);
 });
+
+test("wsUrl/wsProtocols: the credential rides in the subprotocol, never in the socket URL", async () => {
+  const store = new Map<string, string>();
+  let meta: string | undefined;
+  const stub = {
+    localStorage: { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => store.set(k, v), removeItem: (k: string) => store.delete(k) },
+    document: { querySelector: () => (meta === undefined ? null : { content: meta }) },
+    location: { protocol: "https:", host: "mac.tail0.ts.net" },
+  };
+  for (const [k, value] of Object.entries(stub)) Object.defineProperty(globalThis, k, { value, configurable: true, writable: true });
+  const { wsProtocols, wsUrl } = await import("../src/lib/remote.ts");
+  store.set("tracon.token", "ab".repeat(32));
+  assert.equal(wsUrl(), "wss://mac.tail0.ts.net/ws", "a paired device: no ?t= in the URL");
+  assert.deepEqual(wsProtocols(), ["tracon", "ab".repeat(32)]);
+  store.clear();
+  meta = "cd".repeat(32);
+  assert.deepEqual(wsProtocols(), ["tracon", "cd".repeat(32)], "the Mac's own deck sends the secret from its page");
+  store.set("tracon.token", "ab".repeat(32));
+  assert.deepEqual(wsProtocols(), ["tracon", "cd".repeat(32)], "the local port wants the secret even if a token was saved");
+  store.clear();
+  meta = undefined;
+  assert.deepEqual(wsProtocols(), ["tracon"]);
+});
