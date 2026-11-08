@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Compile standalone macOS binaries (Flight Deck embedded). Needs bun. Usage: scripts/build-binary.sh  -> release/tracon-macos-{arm64,x64}.zip
+# Compile standalone macOS binaries (Flight Deck embedded). Needs bun. Usage: scripts/build-binary.sh  -> release/tracon-macos-{arm64,x64}.zip + release/SHA256SUMS
 set -euo pipefail
 cd "$(dirname "$0")/.."
 npm run build -w tracon-ui >/dev/null
@@ -23,4 +23,5 @@ for arch in arm64 x64; do
   bun build --compile --target="bun-darwin-$arch" "$TMP/entry.js" --outfile "$TMP/$arch/tracon" >/dev/null
   (cd "$TMP/$arch" && zip -q "$OLDPWD/release/tracon-macos-$arch.zip" tracon)
 done
+(cd release && shasum -a 256 tracon-macos-*.zip > SHA256SUMS && cat SHA256SUMS)
 ls -lh release

@@ -1,0 +1,31 @@
+# Builds the macOS release zips from the chosen ref, writes SHA256SUMS and signs build provenance.
+# Run by hand: gh workflow run release-build --ref <tag>. It only uploads a workflow artifact; publishing the release stays manual.
+name: release-build
+on:
+  workflow_dispatch:
+permissions: {}
+jobs:
+  build:
+    runs-on: macos-latest
+    permissions:
+      contents: read # check out the source
+      id-token: write # sign the provenance with the workflow's OIDC identity
+      attestations: write # store the attestation on the repo
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+      - run: npm ci --no-audit --no-fund
+      - run: scripts/build-binary.sh
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: release/tracon-macos-*.zip
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: tracon-release
+          path: release/
+          if-no-files-found: error
