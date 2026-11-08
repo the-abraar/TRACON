@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
@@ -41,4 +41,16 @@ test("applyHooks backs up a changed settings.json and leaves broken or unchanged
   assert.deepEqual(applyHooks([a], 4040, "s1", bak, "T2"), [`${a}: unchanged`]);
   applyHooks([a], undefined, undefined, bak, "T3");
   assert.equal(readFileSync(join(a, "settings.json"), "utf8"), original, "uninstall restores the file");
+});
+
+test("applyHooks leaves settings.json readable only by you, since it holds the local secret", () => {
+  const fresh = join(tmp, ".claude-m1"), old = join(tmp, ".claude-m2"), same = join(tmp, ".claude-m3"), bak = join(tmp, "bak-m");
+  for (const d of [fresh, old, same]) mkdirSync(d);
+  writeFileSync(join(old, "settings.json"), "{}\n", { mode: 0o644 });
+  writeFileSync(join(same, "settings.json"), JSON.stringify(withHooks({}, 4040, "s1"), null, 2) + "\n");
+  chmodSync(join(old, "settings.json"), 0o644);
+  chmodSync(join(same, "settings.json"), 0o644);
+  applyHooks([fresh, old, same], 4040, "s1", bak, "T");
+  const mode = (d) => (statSync(join(d, "settings.json")).mode & 0o777).toString(8);
+  assert.deepEqual([fresh, old, same].map(mode), ["600", "600", "600"], "new, rewritten and already-installed files are all 0600");
 });

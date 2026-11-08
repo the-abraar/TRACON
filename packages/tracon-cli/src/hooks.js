@@ -1,5 +1,5 @@
 // `tracon hooks install|uninstall`: the two Claude Code HTTP hooks that send held prompts to the engine, in every profile.
-import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 
 // Claude Code waits up to `timeout` seconds; the engine hands the prompt back to the terminal before that (HOLD_MAX_MS).
@@ -39,6 +39,8 @@ export function applyHooks(profileDirs, port, secret, backupDir, stamp = new Dat
       } catch {
         return `${dir}: settings.json is not valid JSON, left alone`;
       }
+      // the file holds the local secret: tighten it before writing, and on re-install of an unchanged file too
+      chmodSync(file, 0o600);
     }
     const next = withHooks(settings, port, secret);
     if (JSON.stringify(next) === JSON.stringify(settings)) return `${dir}: unchanged`;
@@ -46,7 +48,7 @@ export function applyHooks(profileDirs, port, secret, backupDir, stamp = new Dat
       mkdirSync(backupDir, { recursive: true, mode: 0o700 });
       copyFileSync(file, join(backupDir, `${basename(dir)}-settings-${stamp}.json`));
     }
-    writeFileSync(file, JSON.stringify(next, null, 2) + "\n");
+    writeFileSync(file, JSON.stringify(next, null, 2) + "\n", { mode: 0o600 });
     return `${dir}: ${port === undefined ? "removed" : "installed"}`;
   });
 }
