@@ -713,6 +713,11 @@ test("server: a second engine on the same state dir refuses to start; a socket l
   const again = await startEngine(opts);
   try {
     assert.equal((await sockPost(again.sock, "/hook/pre-tool-use", {}, {})).status, 403);
+    // the CLI sets away mode over the socket too, never sending the secret to whoever holds the TCP port
+    const secret = new State(stateDir).secret();
+    assert.equal((await sockPost(again.sock, "/api/away", { mode: "on" })).status, 403);
+    assert.equal((await sockPost(again.sock, "/api/away", { mode: "on" }, { "x-tracon-secret": secret })).status, 200);
+    assert.equal((await sockPost(again.sock, "/api/answer", {}, { "x-tracon-secret": secret })).status, 404, "nothing else of the API");
   } finally {
     again.close();
   }
@@ -729,6 +734,8 @@ test("tracon hook: prints the answer, and a stopped engine leaves the prompt to 
   }, `${n} held decisions`);
   try {
     await held(0);
+    const away = await tracon(["away", "on"], env).exited;
+    assert.deepEqual([away.code, away.out.trim()], [0, "away mode: on (away: questions and plans wait for your devices)"]);
     const secret = readFileSync(join(stateDir, "secret"), "utf8").trim();
     const perm = JSON.stringify({ hook_event_name: "PermissionRequest", session_id: "s1", transcript_path: join(env.HOME, "t.jsonl"), cwd: "/w", tool_name: "Bash", tool_input: { command: "ls" } });
 
@@ -777,6 +784,10 @@ test("tracon start: a port another program holds gives a clear line and exit 1; 
     const h = await tracon(["hook", "permission-request"], env, '{"hook_event_name":"PermissionRequest"}').exited;
     assert.deepEqual([h.code, h.out], [0, ""]);
     assert.deepEqual(hits, [], "the hooks never go to the TCP port");
+    const a = await tracon(["away", "on"], env).exited;
+    assert.notEqual(a.code, 0);
+    assert.match(a.err, /tracon start/);
+    assert.doesNotMatch(hits.join("\n"), /with secret/, "the squatter never sees the secret");
   } finally {
     squatter.close();
   }

@@ -7,7 +7,7 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { applyHooks, hookCommand, sendHook } from "../src/hooks.js";
+import { applyHooks, hookCommand, postSocket, sendHook } from "../src/hooks.js";
 import { alertLines, flightRow, HEAD, heldLines, row, summary } from "../src/view.js";
 
 const USAGE = "usage: tracon [tui] | start [--no-open] | status | away auto|on|off | pair [--rotate] | hooks install|uninstall | secret rotate | service install|uninstall|status [--dry-run]";
@@ -92,9 +92,11 @@ if (cmd === "hook" && ["pre-tool-use", "permission-request"].includes(flags[0]))
   for (const f of flights) console.log(flightRow(f));
   for (const line of [...alertLines(flights), ...heldLines(decisions)]) console.log(line);
 } else if (cmd === "away" && ["auto", "on", "off"].includes(flags[0])) {
-  await snapshot(); // exits with a hint if no engine
-  const headers = { "content-type": "application/json", "x-tracon-secret": (await state()).secret() };
-  const r = await (await fetch(`${base}/api/away`, { method: "POST", headers, body: JSON.stringify({ mode: flags[0] }) })).json();
+  // over the engine's socket, never TCP: whoever holds the port must not get the secret
+  const st = await state();
+  const res = await postSocket(st.sock, st.secret(), "/api/away", JSON.stringify({ mode: flags[0] }));
+  if (!res) (console.error(`No engine on ${st.sock}. Run: tracon start`), process.exit(1));
+  const r = JSON.parse(res.text);
   if (!r.mode) (console.error(`The engine refused: ${r.error}`), process.exit(1));
   console.log(`away mode: ${r.mode} (${r.away ? "away: questions and plans wait for your devices" : "at the Mac: the terminal asks"})`);
 } else if (cmd === "pair") {

@@ -75,19 +75,25 @@ export const IDLE_MS = 15_000;
  * there is no engine, it refuses, or it goes silent. Never rejects: an empty reply (exit 0, no output) makes Claude Code
  * ask at the terminal as if TRACON weren't installed.
  */
-export function sendHook(sock, secret, path, body, idleMs = IDLE_MS) {
+export async function sendHook(sock, secret, path, body, idleMs = IDLE_MS) {
+  const r = await postSocket(sock, secret, `/hook/${path}`, body, idleMs);
+  return r?.status === 200 ? r.text.trim() : "";
+}
+
+/** POSTs to the engine's Unix socket with the local secret; resolves { status, text }, or undefined if no whole reply came. */
+export function postSocket(sock, secret, path, body, idleMs = IDLE_MS) {
   return new Promise((done) => {
-    const req = request({ socketPath: sock, path: `/hook/${path}`, method: "POST", headers: { "content-type": "application/json", "x-tracon-secret": secret } }, (res) => {
+    const req = request({ socketPath: sock, path, method: "POST", headers: { "content-type": "application/json", "x-tracon-secret": secret } }, (res) => {
       let text = "";
       res.setEncoding("utf8");
       res.on("data", (c) => (text += c));
-      res.on("close", () => done(res.complete && res.statusCode === 200 ? text.trim() : ""));
+      res.on("close", () => done(res.complete ? { status: res.statusCode, text } : undefined));
     });
     const connect = setTimeout(() => req.destroy(), CONNECT_MS);
     req.on("socket", (s) => s.once("connect", () => clearTimeout(connect)));
     req.on("close", () => clearTimeout(connect));
     req.setTimeout(idleMs, () => req.destroy()); // socket idle: reset by every byte, heartbeats included
-    req.on("error", () => done(""));
+    req.on("error", () => done(undefined));
     req.end(body);
   });
 }

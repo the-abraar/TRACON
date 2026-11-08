@@ -81,7 +81,7 @@ function readBody(req: IncomingMessage): Promise<any> {
   });
 }
 
-/** local: deck, API and /ws on 127.0.0.1:<port>. remote: the same behind the device token. hook: /hook/* on the Unix socket. */
+/** local: deck, API and /ws on 127.0.0.1:<port>. remote: the same behind the device token. hook: /hook/* and POST /api/away on the Unix socket. */
 type Listener = "local" | "remote" | "hook";
 
 const json = (res: ServerResponse, status: number, body: unknown) => res.writeHead(status, { "content-type": "application/json" }).end(JSON.stringify(body));
@@ -228,10 +228,12 @@ export async function startEngine(opts: EngineOptions = {}) {
       return json(res, 400, { error: "bad path" });
     }
     if (kind === "hook") {
-      if (!path.startsWith("/hook/") || req.method !== "POST" || req.headers.origin) return json(res, 404, { error: "not found" });
+      // the hooks, and `tracon away`, so the CLI never sends the secret to whoever holds the TCP port
+      const isHook = path.startsWith("/hook/");
+      if (!(isHook || path === "/api/away") || req.method !== "POST" || req.headers.origin) return json(res, 404, { error: "not found" });
       // refused at once, before anything is held: `tracon hook` prints nothing and Claude Code asks at the terminal
       if (!localOk(req)) return json(res, 403, { error: "missing or wrong local secret: run tracon hooks install" });
-      return hook(req, res);
+      return isHook ? hook(req, res) : api(path, url, req, res);
     }
     if (path.startsWith("/hook/")) return json(res, 404, { error: "not found: the hooks moved to the engine's socket; run tracon hooks install" });
     if (path.startsWith("/api/")) {
