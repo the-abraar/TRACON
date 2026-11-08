@@ -34,9 +34,10 @@ export function parseAgyLine(line: string): ParsedEvent | null {
       return { kind: "prompt", ts, text: typeof o.content === "string" ? o.content : undefined };
     case "PLANNER_RESPONSE": {
       const usage = { key: `step-${o.step_index}`, input: o.input_tokens ?? 0, output: o.output_tokens ?? 0 };
-      const tools: ToolCall[] = (o.tool_calls ?? []).map((t: any, i: number) => ({
+      const calls: any[] = (Array.isArray(o.tool_calls) ? o.tool_calls : []).filter((t: unknown) => t && typeof t === "object");
+      const tools: ToolCall[] = calls.map((t, i) => ({
         id: `${o.step_index}-${i}`,
-        name: String(t.name),
+        name: String(t.name ?? ""),
         input: unquote(t.args ?? {}),
       }));
       const cwd = tools.map((t) => t.input.Cwd).find((c) => typeof c === "string") as string | undefined;

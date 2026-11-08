@@ -162,3 +162,10 @@ No new commits since f8c244d (the Host-header and bad-percent-encoding fixes), s
 - **Stuck sessions (`HOLD_MAX_MS`), answered from the code, not a live run** (issue #4, closed): a Claude card stays while its process runs; the held prompt goes back to the terminal after about 58 min, before Claude Code's 3600 s hook timeout. Not a bug. Profiles without `sessions/<pid>.json`, and agy, drop their card after 30 minutes, while a held entry stays in the inbox.
 - **Antigravity answers:** skipped. No agy approval prompt has been captured and agy has no known hook, so it needs the owner to catch one live first.
 - `scripts/check.sh` passes all 7 steps, 49 tests.
+
+## Update (2026-11-08, agent round)
+
+- **Bad transcript lines no longer stop the engine.** `Airspace.consider` wraps each line's parse and apply in a try/catch, skips a line that throws and logs once per transcript. The fs.watch refresh timer catches like the poll does. The Antigravity parser accepts only an array of objects in `tool_calls` and treats a missing `name` as `""`. Tests: `tool_calls` of `[null]`, `"x"` and `{}` parse without throwing, and an engine started with those lines in an in-window brain transcript still answers `GET /api/flights`.
+- **Huge prompts no longer stall the engine.** `promptSummary` cuts its input to 8 KB before any regex (it keeps only 160 characters), and the tag regex no longer backtracks on a long run of `<`. Test: 1,000,000 `<` returns in under 100 ms. On a scratch engine, a 1 MB prompt of `<` in an in-window transcript started in 77 ms, and the worst `GET /api/flights` stayed at 17 ms.
+- Bug 3 above (first read of a transcript over about 512 MB) is unchanged.
+- `scripts/check.sh` passes all 7 steps, 54 tests. The running engine picks this up only after a merge, a `git pull` in its checkout and a restart.

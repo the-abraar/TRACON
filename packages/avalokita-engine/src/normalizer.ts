@@ -39,8 +39,9 @@ export function toolAction(name: string): ToolAction {
  * `!`/slash command output, else the text with tags dropped (slash commands and pastes arrive wrapped in tags).
  */
 export function promptSummary(text: string): string {
+  text = text.slice(0, 8192); // only 160 chars are kept; capping the input bounds every regex below on a huge paste
   const s = /^\s*<task-notification>[\s\S]*?<summary>([\s\S]*?)<\/summary>/.exec(text)?.[1]
-    ?? (/^\s*<(local-command-stdout|bash-stdout|bash-stderr)>/.test(text) ? "command output" : text.replace(/<[^>]*>/g, " "));
+    ?? (/^\s*<(local-command-stdout|bash-stdout|bash-stderr)>/.test(text) ? "command output" : text.replace(/<[^<>]*>/g, " "));
   return redact(s.replace(/\s+/g, " ").trim()).slice(0, 160);
 }
 

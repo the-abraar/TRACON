@@ -51,6 +51,14 @@ test("agy parser: maps steps and treats RUNNING as still executing", () => {
   assert.equal(parseAgyLine('{"type":"PLANNER_RESPONSE","status":"DONE","created_at":"2026-01-01T00:00:00Z","output_tokens":1}')?.kind, "turn_end");
 });
 
+const BAD_AGY = ['[null]', '"x"', "{}"].map((tc) => `{"type":"PLANNER_RESPONSE","status":"DONE","created_at":"2026-01-01T00:00:00Z","tool_calls":${tc}}`);
+
+test("agy parser: malformed tool_calls do not throw", () => {
+  for (const l of BAD_AGY) assert.equal(parseAgyLine(l)?.kind, "turn_end", l);
+  const ev = parseAgyLine('{"type":"PLANNER_RESPONSE","created_at":"2026-01-01T00:00:00Z","tool_calls":[null,{"args":{}},{"name":"view_file"}]}');
+  assert.deepEqual(ev?.kind === "tool_use" && ev.tools.map((t) => t.name), ["", "view_file"]);
+});
+
 test("normalizer: full claude session lands with de-duplicated fuel", () => {
   const f = fold(lines("claude/session.jsonl").map((l) => parseClaudeLine(l)));
   const p = f.packet(T0 + 12_000);
@@ -92,6 +100,12 @@ test("promptSummary: one readable line for the message that opened a turn", () =
   assert.equal(promptSummary("<bash-stdout>lots of output</bash-stdout><bash-stderr></bash-stderr>"), "command output");
   assert.equal(promptSummary("use password: hunter2 here"), "use password: *** here");
   assert.equal(promptSummary("x".repeat(500)).length, 160);
+});
+
+test("promptSummary stays fast on a huge prompt full of unclosed '<'", () => {
+  const t = performance.now();
+  promptSummary("<".repeat(1_000_000));
+  assert.ok(performance.now() - t < 100, `took ${Math.round(performance.now() - t)} ms`);
 });
 
 test("trace: turn and tool nodes with latency, tokens and batch edges", () => {
@@ -518,6 +532,19 @@ test("server: a request that throws gets a 500 at once and the engine keeps serv
     const res = await fetch(`${eng.url}/api/away`, { method: "POST", headers: { "x-tracon-secret": new State(stateDir).secret() }, body: JSON.stringify({ mode: "on" }), signal: AbortSignal.timeout(2000) });
     assert.equal(res.status, 500);
     assert.equal((await fetch(`${eng.url}/api/flights`)).status, 200);
+  } finally {
+    eng.close();
+  }
+});
+
+test("server: a transcript line that throws while parsing is skipped and the engine still starts", async () => {
+  const home = fakeHome();
+  const brain = join(home, ".gemini", "antigravity-cli", "brain", "abcd1234-conv", ".system_generated", "logs", "transcript.jsonl");
+  appendFileSync(brain, BAD_AGY.join("\n") + "\n");
+  const eng = await startEngine({ port: 0, remotePort: 0, home, windowMs: Number.MAX_SAFE_INTEGER, uiDist: join(tmp, "no-ui"), stateDir: mkdtempSync(join(tmp, "state-")), env: {} });
+  try {
+    const snap = (await (await fetch(`${eng.url}/api/flights`, { signal: AbortSignal.timeout(2000) })).json()) as { flights: unknown[] };
+    assert.equal(snap.flights.length, 2);
   } finally {
     eng.close();
   }
