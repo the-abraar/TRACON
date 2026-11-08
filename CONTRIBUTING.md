@@ -22,6 +22,8 @@ npm test                  # tests only
 
 `scripts/check.sh` must pass before a PR is merged. One guard is strict: the engine (`packages/avalokita-engine/src`) must never write to agent config dirs such as `~/.claude*` or `~/.gemini`. Only `state.ts` writes, and only under `~/.config/tracon`.
 
+Found a security problem? Report it privately as [SECURITY.md](SECURITY.md) says, not in an issue.
+
 ## Picking an issue
 
 - Start with issues labelled [`good first issue`](https://github.com/the-abraar/TRACON/labels/good%20first%20issue) or [`help wanted`](https://github.com/the-abraar/TRACON/labels/help%20wanted). Each has a `difficulty:` label.

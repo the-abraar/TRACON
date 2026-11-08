@@ -38,7 +38,7 @@ Without Homebrew, in Terminal (downloads, unzips and runs it):
 curl -L "https://github.com/the-abraar/TRACON/releases/download/beta_0.1/tracon-macos-$(uname -m | sed s/x86_64/x64/).zip" -o tracon.zip && unzip -o tracon.zip && ./tracon
 ```
 
-Downloaded in a browser instead? The build is not notarized by Apple, so macOS will say it can't verify it. Run `xattr -d com.apple.quarantine tracon` once in the unzipped folder, then `./tracon`.
+Downloaded in a browser instead? The build is not notarized by Apple yet, so macOS will say it can't verify it. Use the Homebrew command above instead: it checks the zip's sha256 and needs no Gatekeeper workaround. Releases after `beta_0.1` also ship a `SHA256SUMS` file and signed build provenance; see [SECURITY.md](SECURITY.md) to verify a download by hand.
 
 `./tracon` opens the live radar right in your terminal (↑/↓ pick a flight, Enter shows its trace, `w` opens the browser Flight Deck, `q` quits). `./tracon start` runs the browser Flight Deck instead; `./tracon status` prints a one-shot snapshot. Beta: macOS only, Windows is untested.
 
@@ -191,7 +191,7 @@ npm start                                      # builds the UI, starts the engin
 node packages/tracon-cli/bin/tracon.js         # terminal Flight Deck (TUI); reuses a running engine, else starts one
 node packages/tracon-cli/bin/tracon.js status  # terminal snapshot from a running engine
 node packages/tracon-cli/bin/tracon.js away on|off|auto  # who answers held prompts (see Partner App)
-scripts/build-binary.sh                        # standalone macOS binaries into release/ (needs bun)
+scripts/build-binary.sh                        # standalone macOS binaries + SHA256SUMS into release/ (needs bun)
 scripts/check.sh                               # typecheck, read-only guard, tests, UI build (--fast: skip tests and build)
 ```
 
