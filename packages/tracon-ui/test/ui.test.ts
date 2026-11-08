@@ -126,6 +126,35 @@ test("questionAnswer: picks and Other text joined like Claude Code's dialog; und
   assert.equal(permissionTarget({ ...d, kind: "permission", tool: "X", input: { a: 1 } }), '{\n  "a": 1\n}');
 });
 
+test("permission card: shows where a Grep or Glob reads, every other input field, and a sandbox override", async () => {
+  const { permissionTarget, permissionExtras } = await import("../src/components/decisions/answer.ts");
+  const d = (tool: string, input: Record<string, unknown>) => ({ id: tool, callsign: "CL-T", kind: "permission" as const, tool, cwd: "/w", createdAt: 0, input });
+  assert.equal(permissionTarget(d("Grep", { pattern: "BEGIN", path: "/Users/o/.ssh" })), "BEGIN in /Users/o/.ssh");
+  assert.equal(permissionTarget(d("Glob", { pattern: "**/*" })), "**/* in cwd");
+  assert.deepEqual(permissionExtras(d("Grep", { pattern: "x", path: "/p", glob: "*.pem", "-i": true })), ["glob: *.pem", "-i: true"]);
+  assert.deepEqual(permissionExtras(d("Bash", { command: "ls", description: "List", timeout: 5 })), ["timeout: 5"]);
+  assert.deepEqual(permissionExtras(d("Write", { file_path: "/a", content: "x" })), [], "the content is shown as the body");
+  assert.deepEqual(permissionExtras(d("Edit", { file_path: "/a", old_string: "a", new_string: "b", replace_all: true })), [], "the diff shows these");
+  assert.deepEqual(permissionExtras(d("mcp__gh__x", { path: "o/r", body: "b" })), [], "MCP input is shown whole already");
+
+  // the rendered card, server-side, so a field the helpers return but the card drops is caught too
+  const { createServer } = await import("vite");
+  const { createElement } = await import("react");
+  const { renderToStaticMarkup } = await import("react-dom/server");
+  const vite = await createServer({ root: new URL("..", import.meta.url).pathname, configFile: false, logLevel: "error", appType: "custom", server: { middlewareMode: true, hmr: false, ws: false }, optimizeDeps: { noDiscovery: true } });
+  try {
+    const { DecisionInbox } = await vite.ssrLoadModule("/src/components/decisions/DecisionInbox.tsx");
+    const card = (tool: string, input: Record<string, unknown>) => renderToStaticMarkup(createElement(DecisionInbox, { decisions: [d(tool, input)] }));
+    assert.match(card("Grep", { pattern: ".", path: "/Users/o/.ssh" }), /\. in \/Users\/o\/\.ssh/);
+    assert.match(card("Glob", { pattern: "**/*", path: "/Users/o/.aws" }), /\/Users\/o\/\.aws/);
+    assert.match(card("Grep", { pattern: ".", glob: "*.pem" }), /glob: \*\.pem/);
+    assert.match(card("Bash", { command: "npm test", dangerouslyDisableSandbox: true }), /Runs outside the sandbox/);
+    assert.doesNotMatch(card("Bash", { command: "npm test" }), /sandbox/i);
+  } finally {
+    await vite.close();
+  }
+});
+
 test("savePairToken: takes the token from a pasted pair link or bare token, rejects anything else", async () => {
   const store = new Map<string, string>();
   Object.defineProperty(globalThis, "localStorage", { configurable: true, value: { setItem: (k: string, v: string) => store.set(k, v), getItem: (k: string) => store.get(k) ?? null } });

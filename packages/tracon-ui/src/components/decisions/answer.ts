@@ -24,12 +24,38 @@ export function questionAnswer(d: Decision, picked: Record<string, string[]>, ot
   return Object.keys(answers).length ? { id: d.id, kind: "question", answers } : undefined;
 }
 
-/** What a permission prompt is about: the command, file, URL or, failing those, the raw input. MCP tools always show
- * their whole input, indented, since any field (not just a path) can matter. */
+const isSearch = (d: Decision) => (d.tool === "Grep" || d.tool === "Glob") && typeof d.input.pattern === "string";
+
+/** The input keys permissionTarget shows; undefined when it shows the whole input. */
+function targetKeys(d: Decision): string[] | undefined {
+  const i = d.input as Record<string, unknown>;
+  if (d.tool.startsWith("mcp__")) return undefined;
+  if (isSearch(d)) return typeof i.path === "string" ? ["pattern", "path"] : ["pattern"];
+  const k = ["command", "file_path", "url", "pattern", "path"].find((k) => i[k] != null);
+  return k && typeof i[k] === "string" ? [k] : undefined;
+}
+
+/** What a permission prompt is about: the command, file, URL, a search's pattern and where it reads, or failing those,
+ * the raw input. MCP tools always show their whole input, indented, since any field (not just a path) can matter. */
 export function permissionTarget(d: Decision): string {
   const i = d.input as Record<string, unknown>;
-  const v = i.command ?? i.file_path ?? i.url ?? i.pattern ?? i.path;
-  return typeof v === "string" && !d.tool.startsWith("mcp__") ? v : JSON.stringify(i, null, 2);
+  const keys = targetKeys(d);
+  if (!keys) return JSON.stringify(i, null, 2);
+  return isSearch(d) ? `${i.pattern} in ${keys[1] ? i.path : "cwd"}` : String(i[keys[0]]);
+}
+
+/** Every input field the card does not already show, as "key: value", so a field a tool gains is never hidden. */
+export function permissionExtras(d: Decision): string[] {
+  const i = d.input as Record<string, unknown>;
+  const keys = targetKeys(d);
+  if (!keys) return [];
+  const shown = new Set(keys);
+  if (typeof i.description === "string") shown.add("description");
+  if (permissionBody(d) !== undefined) shown.add("content");
+  if (permissionDiff(d)) for (const k of ["old_string", "new_string", "replace_all", "edits"]) shown.add(k);
+  return Object.entries(i)
+    .filter(([k]) => !shown.has(k))
+    .map(([k, v]) => `${k}: ${typeof v === "string" ? v : JSON.stringify(v)}`);
 }
 
 /** What a Write would put in the file, so a phone never approves a blind file change; undefined for other tools. */

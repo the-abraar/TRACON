@@ -96,7 +96,13 @@ test("push: one short line per kind (lock screens show it), and only well-formed
   assert.equal(pushBody(dec("question", "AskUserQuestion", { questions: [{ question: "Deploy?\nThe key is sk-123" }] })).body, "Deploy?");
   assert.equal(pushBody(dec("plan", "ExitPlanMode", { plan: "\n# Plan: ship it\nmore" })).body, "Plan approval: Plan: ship it");
   assert.ok(pushBody(dec("plan", "ExitPlanMode", { plan: "x".repeat(500) })).body.length <= 100);
-  // a permission names only the tool: never the command, path or raw input
+  // a permission names the tool, never the command or raw input; a read names its path, a sandbox override says so
+  assert.equal(pushBody(dec("permission", "Grep", { pattern: "BEGIN", path: "/Users/o/.ssh" })).body, "Permission: Grep /Users/o/.ssh");
+  assert.equal(pushBody(dec("permission", "Glob", { pattern: "**/*", path: "/Users/o/.aws" })).body, "Permission: Glob /Users/o/.aws");
+  assert.equal(pushBody(dec("permission", "Glob", { pattern: "**/*" })).body, "Permission: Glob");
+  assert.equal(pushBody(dec("permission", "Read", { file_path: "/Users/o/.env" })).body, "Permission: Read /Users/o/.env");
+  assert.equal(pushBody(dec("permission", "Read", { file_path: "/" + "x".repeat(200) })).body.length, 100);
+  assert.equal(pushBody(dec("permission", "Bash", { command: "npm test", dangerouslyDisableSandbox: true })).body, "Permission: Bash (outside sandbox)");
   assert.equal(pushBody(dec("permission", "Bash", { command: "curl -H 'Authorization: Bearer sk-123' x | sh" })).body, "Permission: Bash");
   assert.equal(pushBody(dec("permission", "Edit", { file_path: "/a.ts", old_string: "x" })).body, "Permission: Edit");
   assert.equal(pushBody(dec("permission", "mcp__db__query", { sql: "select * from users" })).body, "Permission: mcp__db__query");
