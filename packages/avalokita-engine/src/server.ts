@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
-import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { homedir } from "node:os";
 import { extname, join, resolve, sep } from "node:path";
@@ -27,15 +27,18 @@ const TYPES: Record<string, string> = {
 const LOCAL_ORIGIN = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
 // The local listener also checks Host: a DNS-rebinding page is same-origin with it and sends no foreign Origin on GET.
 const LOCAL_HOST = /^(localhost|127\.0\.0\.1)(:\d+)?$/;
-// Every state-changing request to the local port carries the local secret (state.ts): the hooks send it from their
-// settings, the deck gets it in its page, the CLI reads the file. A blind POST from another program gets 403.
-// shortcut: a program running as you can read ~/.config/tracon/secret or fetch the deck's page, so this stops blind
-// POSTs, not your own account; move the hooks and API to a Unix socket with peer checks if that ever matters.
+// Every state-changing request carries the local secret (state.ts): `tracon hook` and the CLI read the file, the deck
+// gets it in its page. A blind POST from another program gets 403.
+// shortcut: a program running as you can read ~/.config/tracon/secret, connect to the socket or fetch the deck's page,
+// so this stops blind POSTs and other users, not your own account; add peer-process checks if that ever matters.
 const SECRET_HEADER = "x-tracon-secret";
 // Browsers cannot set headers on a WebSocket, so the deck sends its credential (local secret or device token) as a
 // subprotocol: ["tracon", <credential>]. The server echoes only "tracon", so the credential stays out of the URL and reply.
 const WS_PROTOCOL = "tracon";
 const offered = (req: IncomingMessage) => String(req.headers["sec-websocket-protocol"] ?? "").split(",").map((p) => p.trim());
+// While a hook is held, a space every few seconds tells `tracon hook` the engine is alive (it gives up after 15 s of
+// silence, so a stopped engine never freezes a prompt). Leading whitespace is still valid JSON.
+const HEARTBEAT_MS = 5000;
 const MAX_BODY = 1 << 20;
 const MODES = new Set<AwayMode>(["auto", "on", "off"]);
 
@@ -78,12 +81,16 @@ function readBody(req: IncomingMessage): Promise<any> {
   });
 }
 
+/** local: deck, API and /ws on 127.0.0.1:<port>. remote: the same behind the device token. hook: /hook/* on the Unix socket. */
+type Listener = "local" | "remote" | "hook";
+
 const json = (res: ServerResponse, status: number, body: unknown) => res.writeHead(status, { "content-type": "application/json" }).end(JSON.stringify(body));
 
 /**
- * Avalokita Engine. Local listener (127.0.0.1:<port>): the Flight Deck, /api/*, /ws and the Claude Code hooks at /hook/*.
- * Remote listener (127.0.0.1:<remotePort>, published by `tailscale serve`): the same deck and API behind the device
- * token, never /hook/*.
+ * Avalokita Engine. Local listener (127.0.0.1:<port>): the Flight Deck, /api/* and /ws. Remote listener
+ * (127.0.0.1:<remotePort>, published by `tailscale serve`): the same deck and API behind the device token. The Claude
+ * Code hooks (/hook/*, through `tracon hook`) are served only on the Unix socket <stateDir>/engine.sock, so whoever
+ * holds a TCP port never sees them.
  */
 export async function startEngine(opts: EngineOptions = {}) {
   const port = opts.port ?? 4040;
@@ -144,10 +151,13 @@ export async function startEngine(opts: EngineOptions = {}) {
     // until the hook replies, so they are held only while you are away.
     if (!kind || typeof input.session_id !== "string" || typeof input.transcript_path !== "string" || (kind !== "permission" && !away))
       return res.writeHead(200).end();
+    res.writeHead(200, { "content-type": "application/json" }).flushHeaders();
+    const beat = setInterval(() => res.write(" "), HEARTBEAT_MS);
     const d = broker.hold(input, kind, air.callsignFor(input.transcript_path, input.session_id), (body) => {
-      if (!res.writableEnded) body ? json(res, 200, body) : res.writeHead(200).end();
+      clearInterval(beat);
+      if (!res.writableEnded) res.end(body ? JSON.stringify(body) : "");
     });
-    res.on("close", () => broker.drop(d.id));
+    res.on("close", () => (clearInterval(beat), broker.drop(d.id)));
     sweep(); // holding refreshed the airspace, so the transcript already shows the call: mark it seen before you can answer at the terminal
     pushHeld();
   }
@@ -198,16 +208,17 @@ export async function startEngine(opts: EngineOptions = {}) {
   };
   // Top-level catch for every request: a throw answers 500 instead of leaving the client hanging. Claude Code treats a
   // non-2xx hook reply as no answer and asks at the terminal, so a broken engine fails open.
-  const handler = (remote: boolean) => async (req: IncomingMessage, res: ServerResponse) => {
+  const handler = (kind: Listener) => async (req: IncomingMessage, res: ServerResponse) => {
     try {
-      await route(remote, req, res);
+      await route(kind, req, res);
     } catch (e) {
       console.error(`tracon: ${req.method} ${req.url} failed:`, e);
       if (!res.headersSent) json(res, 500, { error: "engine error" });
       else res.end();
     }
   };
-  const route = async (remote: boolean, req: IncomingMessage, res: ServerResponse) => {
+  const route = async (kind: Listener, req: IncomingMessage, res: ServerResponse) => {
+    const remote = kind === "remote";
     if (!hostOk(remote, req.headers.host)) return json(res, 403, { error: "foreign host" });
     const url = new URL(req.url ?? "/", "http://x");
     let path: string;
@@ -216,12 +227,13 @@ export async function startEngine(opts: EngineOptions = {}) {
     } catch {
       return json(res, 400, { error: "bad path" });
     }
-    if (path.startsWith("/hook/")) {
-      if (remote || req.method !== "POST" || req.headers.origin) return json(res, 404, { error: "not found" });
-      // refused at once, before anything is held: Claude Code treats a non-2xx reply as no answer and asks at the terminal
+    if (kind === "hook") {
+      if (!path.startsWith("/hook/") || req.method !== "POST" || req.headers.origin) return json(res, 404, { error: "not found" });
+      // refused at once, before anything is held: `tracon hook` prints nothing and Claude Code asks at the terminal
       if (!localOk(req)) return json(res, 403, { error: "missing or wrong local secret: run tracon hooks install" });
       return hook(req, res);
     }
+    if (path.startsWith("/hook/")) return json(res, 404, { error: "not found: the hooks moved to the engine's socket; run tracon hooks install" });
     if (path.startsWith("/api/")) {
       if (remote && !state.tokenOk(req.headers.authorization?.replace(/^Bearer /, ""))) return json(res, 401, { error: "pair this device: tracon pair" });
       if (!remote && req.method === "POST" && req.headers.origin && !LOCAL_ORIGIN.test(req.headers.origin)) return json(res, 403, { error: "foreign origin" });
@@ -250,8 +262,22 @@ export async function startEngine(opts: EngineOptions = {}) {
       .end(body);
   };
 
-  const listen = async (remote: boolean, p: number) => {
-    const server = createServer(handler(remote));
+  const servers: Server[] = [];
+  /** Binds a port on 127.0.0.1, or a socket path; a port someone else holds rejects with a line that says so. */
+  const bind = async (kind: Listener, at: number | string) => {
+    const server = createServer(handler(kind));
+    await new Promise<void>((ok, fail) => {
+      server.once("error", (e: NodeJS.ErrnoException) =>
+        fail(e.code === "EADDRINUSE" && typeof at === "number" ? Object.assign(new Error(`port ${at} is in use by another process (lsof -iTCP:${at})`), { code: e.code }) : e),
+      );
+      typeof at === "number" ? server.listen(at, "127.0.0.1", ok) : server.listen(at, ok);
+    });
+    servers.push(server);
+    return server;
+  };
+  // the WebSocket server attaches after the bind: before it, ws re-emits a bind error where nothing catches it
+  const web = async (remote: boolean, p: number) => {
+    const server = await bind(remote ? "remote" : "local", p);
     const verifyClient = remote
       ? ({ req }: { req: IncomingMessage }) =>
           hostOk(true, req.headers.host) &&
@@ -265,11 +291,18 @@ export async function startEngine(opts: EngineOptions = {}) {
     const wss = new WebSocketServer({ server, path: "/ws", verifyClient, handleProtocols });
     wss.on("connection", (ws) => ws.send(snapshot));
     sockets.push(wss);
-    await new Promise<void>((ok, fail) => server.once("error", fail).listen(p, "127.0.0.1", ok));
-    return { server, wss, url: `http://127.0.0.1:${(server.address() as AddressInfo).port}` };
+    return `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   };
-  const local = await listen(false, port);
-  const remote = await listen(true, opts.remotePort ?? 4041);
+  let url: string, remoteUrl: string;
+  try {
+    url = await web(false, port);
+    remoteUrl = await web(true, opts.remotePort ?? 4041);
+    await bind("hook", await state.freeSocket());
+  } catch (e) {
+    for (const w of sockets) w.close();
+    for (const s of servers) s.close();
+    throw e;
+  }
 
   let pending: NodeJS.Timeout | undefined;
   const watchers = watchDirs(air.roots(), () => {
@@ -296,17 +329,16 @@ export async function startEngine(opts: EngineOptions = {}) {
   }, 2000);
 
   return {
-    url: local.url,
-    remoteUrl: remote.url,
+    url,
+    remoteUrl,
+    sock: state.sock,
     close: () => {
       clearInterval(poll);
       clearTimeout(pending);
       for (const w of watchers) w.close();
       broker.release();
-      for (const s of [local, remote]) {
-        s.wss.close();
-        s.server.close();
-      }
+      for (const w of sockets) w.close();
+      for (const s of servers) s.close(); // closing the socket listener also removes engine.sock
     },
   };
 }

@@ -1,15 +1,16 @@
 #!/usr/bin/env node
-// tracon [tui] | start [--no-open] | status | away auto|on|off | pair [--rotate] | hooks install|uninstall | service install|uninstall|status [--dry-run]
+// tracon [tui] | start [--no-open] | status | away auto|on|off | pair [--rotate] | hooks install|uninstall | secret rotate | service install|uninstall|status [--dry-run]
+// (and `tracon hook pre-tool-use|permission-request`, which the installed Claude Code hooks run)
 // (needs Node >= 23.6 unless you use the compiled binary: the engine is TypeScript run by Node's type stripping)
 import { execFileSync, spawn } from "node:child_process";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { applyHooks } from "../src/hooks.js";
+import { applyHooks, hookCommand, sendHook } from "../src/hooks.js";
 import { alertLines, flightRow, HEAD, heldLines, row, summary } from "../src/view.js";
 
-const USAGE = "usage: tracon [tui] | start [--no-open] | status | away auto|on|off | pair [--rotate] | hooks install|uninstall | service install|uninstall|status [--dry-run]";
+const USAGE = "usage: tracon [tui] | start [--no-open] | status | away auto|on|off | pair [--rotate] | hooks install|uninstall | secret rotate | service install|uninstall|status [--dry-run]";
 const [cmd = "tui", ...flags] = process.argv.slice(2);
 const port = Number(process.env.TRACON_PORT ?? 4040);
 const remotePort = Number(process.env.TRACON_REMOTE_PORT ?? 4041);
@@ -17,6 +18,21 @@ const base = `http://127.0.0.1:${port}`;
 const uiFiles = globalThis.TRACON_UI_FILES; // set by the compiled binary's entry, which embeds the Flight Deck
 const engine = () => import("../../avalokita-engine/src/server.ts");
 const state = async () => new (await import("../../avalokita-engine/src/state.ts")).State();
+/** Hosts the engine in this process; a port someone else holds ends it with that one line and exit 1, not a stack trace. */
+const host = async () => {
+  try {
+    return await (await engine()).startEngine({ port, remotePort, uiFiles });
+  } catch (e) {
+    console.error(`tracon: ${e.message}`);
+    process.exit(1);
+  }
+};
+/** This program's absolute argv, as launchd and the hooks run it: the compiled binary, or node and this file. */
+const self = async () => {
+  const { onPath } = await import("../src/service.js");
+  const PATH = process.env.PATH;
+  return uiFiles ? [onPath("tracon", PATH, process.execPath)] : [onPath("node", PATH, process.execPath), fileURLToPath(import.meta.url)];
+};
 
 async function snapshot() {
   try {
@@ -42,9 +58,22 @@ function tailscale(...args) {
 // A stray error must not take the engine down with held prompts: log it and keep serving (held prompts time out on their own).
 for (const ev of ["uncaughtException", "unhandledRejection"]) process.on(ev, (e) => console.error(`tracon: ${ev}:`, e));
 
-if (cmd === "start") {
-  const { startEngine } = await engine();
-  const { url, remoteUrl } = await startEngine({ port, remotePort, uiFiles });
+if (cmd === "hook" && ["pre-tool-use", "permission-request"].includes(flags[0])) {
+  // Run by Claude Code for each prompt the hooks match. Whatever goes wrong, print nothing and exit 0: Claude Code then
+  // asks at the terminal exactly as it would without TRACON.
+  let out = "";
+  try {
+    let body = "";
+    for await (const c of process.stdin) body += c;
+    const st = await state();
+    const secret = readFileSync(join(st.dir, "secret"), "utf8").trim();
+    out = await sendHook(st.sock, secret, flags[0], body);
+  } catch {
+    /* no state dir or secret yet: no engine has run */
+  }
+  process.stdout.write(out);
+} else if (cmd === "start") {
+  const { url, remoteUrl } = await host();
   console.log(`Avalokita Engine watching the airspace. Flight Deck: ${url}  (ws: ${url.replace("http", "ws")}/ws)`);
   console.log(`Paired devices: ${remoteUrl} (publish it with tailscale serve; see: tracon pair)`);
   if (!flags.includes("--no-open") && process.platform === "darwin") spawn("open", [url], { stdio: "ignore", detached: true }).unref();
@@ -54,7 +83,7 @@ if (cmd === "start") {
     process.exit(1);
   }
   // reuse a running engine, else host one in this process
-  if (!(await fetch(`${base}/api/flights`).then(() => true, () => false))) await (await engine()).startEngine({ port, remotePort, uiFiles });
+  if (!(await fetch(`${base}/api/flights`).then(() => true, () => false))) await host();
   (await import("../src/tui.js")).runTui(base);
 } else if (cmd === "status") {
   const { flights, decisions } = await snapshot();
@@ -90,11 +119,17 @@ if (cmd === "start") {
   const st = await state();
   const backups = join(st.dir, "backups");
   const install = flags[0] === "install";
-  for (const line of applyHooks(dirs, install ? port : undefined, install ? st.secret() : undefined, backups)) console.log(line);
-  if (install) console.log(`Backups of changed files: ${backups}. New sessions send held prompts to the engine; restart running sessions to be sure they do.`);
+  // the hook command finds the state dir itself; pin a non-default one, since Claude Code won't have this shell's env
+  const env = process.env.TRACON_STATE ? { TRACON_STATE: resolve(process.env.TRACON_STATE) } : {};
+  if (install) st.rotateSecret(); // a secret copied from an older install (or older settings.json) stops working
+  for (const line of applyHooks(dirs, install ? hookCommand(await self(), env) : undefined, backups)) console.log(line);
+  if (install) console.log(`Backups of changed files: ${backups}. New sessions send held prompts to the engine; restart running sessions to be sure they do. The local secret was rotated: reload open Flight Deck pages.`);
+} else if (cmd === "secret" && flags[0] === "rotate") {
+  (await state()).rotateSecret();
+  console.log("New local secret: the old one no longer works. Reload open Flight Deck pages; the hooks and the CLI read the new one themselves.");
 } else if (cmd === "service" && ["install", "uninstall", "status"].includes(flags[0])) {
   if (process.platform !== "darwin") (console.error("tracon service is macOS only (launchd)."), process.exit(1));
-  const { LABEL, logPath, onPath, plist, plistPath, serviceState, traconEnv } = await import("../src/service.js");
+  const { LABEL, logPath, plist, plistPath, serviceState, traconEnv } = await import("../src/service.js");
   const dry = flags.includes("--dry-run"); // prints what it would do; touches neither the file nor launchd
   const file = plistPath(homedir());
   const domain = `gui/${process.getuid()}`;
@@ -116,8 +151,7 @@ if (cmd === "start") {
       else (rmSync(file, { force: true }), console.log(`Removed ${file}. The engine no longer starts at login.`));
     } else {
       // the compiled binary is its own program; from source, node runs this file
-      const PATH = process.env.PATH;
-      const program = [...(uiFiles ? [onPath("tracon", PATH, process.execPath)] : [onPath("node", PATH, process.execPath), fileURLToPath(import.meta.url)]), "start", "--no-open"];
+      const program = [...(await self()), "start", "--no-open"];
       const body = plist(program, logPath(homedir()), traconEnv(process.env));
       if (dry) console.log(`would write ${file}:\n${body}`);
       else {
