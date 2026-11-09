@@ -5,6 +5,7 @@
 Setup is done, apart from push on the phone. Design and spike results: PLAN.md section 8.
 
 ### Start here tomorrow
+- [ ] **Switch to the new hooks (command hooks over the Unix socket, after merging them):** refresh the engine's copy, `launchctl kickstart -k gui/$(id -u)/com.blackbird.tracon`, then `tracon hooks install` once (rewrites the 5 profiles' `settings.json`, backups in `~/.config/tracon/backups`, rotates the local secret). Check: `grep -c x-tracon-secret ~/.claude*/settings.json` is 0 everywhere, and `ensure_caveman.py check` is ALL GOOD. Restart open Claude sessions. Live test: ask a question while away, answer it from the phone; then `launchctl kill SIGSTOP gui/$(id -u)/com.blackbird.tracon`, ask again, and the terminal dialog should appear within about 15 s (`launchctl kill SIGCONT ...` afterwards). Not while travelling.
 - [ ] **Install the engine as a service** (one line, restarts the engine once): `tracon service install && tracon service status`. It replaces the hand-copied `com.blackbird.tracon` plist (same label) with one the CLI writes; KeepAlive and RunAtLoad as before. On 2026-10-27 the old agent was already loaded and running (`launchctl list` showed pid 709), so this is a tidy-up, not a rescue. Undo: `tracon service uninstall`. `tailscale serve` is separate; check it with `tailscale serve status`.
 - [ ] **Push is blocked: the engine has no subscription from the iPhone.** `~/.config/tracon/subscriptions.json` is `[]`, even though the app's notifications button shows "on".
   - Known so far: the engine side works. A probe POST to `/api/push/subscribe` over the tailnet was saved, then removed. The button's "on" used to reflect only the phone's own registration, so it never showed whether the engine had it.
@@ -27,6 +28,7 @@ Setup is done, apart from push on the phone. Design and spike results: PLAN.md s
 - [ ] Decide what to do with the untracked `dev/agy_autostrategy.md`. It's from 14:50 on 2026-10-17, before this work started, and was left alone.
 
 ### Done
+- [x] In code, 2026-11-08: command hooks (`tracon hook`) over the engine's Unix socket, with a 5 s heartbeat and a 15 s give-up, so a stopped engine can't freeze a prompt; `/hook/*` off the TCP port; a clean exit when the port is taken; no secret in `settings.json`, `tracon secret rotate`. Needs the owner step at the top.
 - [x] Tailscale on the Mac and the iPhone 15.
 - [x] `tracon hooks install`: all 5 profiles, backups in `~/.config/tracon/backups`, and `ensure_caveman.py check` still ALL GOOD (it won't strip them). Undo with `tracon hooks uninstall`.
 - [x] Tailscale Serve enabled and running: `https://<mac>.<tailnet>.ts.net/` → `127.0.0.1:4041`. Turn it off with `tailscale serve --https=443 off`.

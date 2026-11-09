@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { appendFileSync, copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { get } from "node:http";
+import { spawn } from "node:child_process";
+import { createServer, get, request } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
@@ -20,7 +21,8 @@ import { WebSocket } from "ws";
 const FIX = join(import.meta.dirname, "fixtures");
 const lines = (p: string) => readFileSync(join(FIX, p), "utf8").split("\n").filter(Boolean);
 const T0 = Date.parse("2026-01-01T00:00:00Z");
-const tmp = mkdtempSync(join(tmpdir(), "tracon-test-"));
+// short base dir: the engine's Unix socket lives in its state dir, and a socket path must stay under 104 bytes on macOS
+const tmp = mkdtempSync(join(process.platform === "win32" ? tmpdir() : "/tmp", "tracon-test-"));
 after(() => rmSync(tmp, { recursive: true, force: true }));
 
 const fold = (evs: (ParsedEvent | null)[], meta = { callsign: "CL-T", runtime: "claude-code" as const, tier: "pro_20" as const }) => {
@@ -400,7 +402,9 @@ test("server: hooks hold decisions while away, a paired device answers, the remo
   const tp = join(home, ".claude-biz", "projects", "-work-demo", `${sid}.jsonl`);
   const local = { "x-tracon-secret": new State(stateDir).secret() }; // what the installed hooks and the local deck send
   const post = (base: string, path: string, body: unknown, headers: Record<string, string> = {}, signal?: AbortSignal) =>
-    fetch(base + path, { method: "POST", headers: { "content-type": "application/json", ...(base === eng.url ? local : {}), ...headers }, body: JSON.stringify(body), ...(signal ? { signal } : {}) });
+    base === eng.sock
+      ? sockPost(eng.sock, path, body, { ...local, ...headers }, signal)
+      : fetch(base + path, { method: "POST", headers: { "content-type": "application/json", ...(base === eng.url ? local : {}), ...headers }, body: JSON.stringify(body), ...(signal ? { signal } : {}) });
   const snapshot = async () => (await (await fetch(`${eng.url}/api/flights`)).json()) as any;
   const held = (n: number) => waitFor(async () => ((await snapshot()).decisions.length === n ? snapshot() : undefined), `${n} held decisions`);
   const ask = {
@@ -413,13 +417,13 @@ test("server: hooks hold decisions while away, a paired device answers, the remo
   };
   try {
     // present: the hook returns at once with no decision, so the terminal asks as usual
-    const r0 = await post(eng.url, "/hook/pre-tool-use", ask);
+    const r0 = await post(eng.sock, "/hook/pre-tool-use", ask);
     assert.equal(r0.status, 200);
     assert.equal(await r0.text(), "");
 
     // away: the hook is held, shows in the snapshot, and its flight is holding for certain
     assert.equal((await post(eng.url, "/api/away", { mode: "on" })).status, 200);
-    const pending = post(eng.url, "/hook/pre-tool-use", ask);
+    const pending = post(eng.sock, "/hook/pre-tool-use", ask);
     const snap = await held(1);
     const d = snap.decisions[0];
     assert.equal(d.callsign, "CL-BIZ-0000");
@@ -455,11 +459,14 @@ test("server: hooks hold decisions while away, a paired device answers, the remo
 
     // a page from another site cannot answer or reach the hooks through the local port
     assert.equal((await post(eng.url, "/api/away", { mode: "off" }, { origin: "https://evil.example" })).status, 403);
-    assert.equal((await post(eng.url, "/hook/pre-tool-use", ask, { origin: "https://evil.example" })).status, 404);
+    assert.equal((await post(eng.sock, "/hook/pre-tool-use", ask, { origin: "https://evil.example" })).status, 404);
+    // the hooks live only on the Unix socket: whoever holds the TCP port gets no hook traffic, and the port serves none
+    for (const path of ["/hook/pre-tool-use", "/hook/permission-request"]) assert.equal((await post(eng.url, path, ask)).status, 404, path);
+    assert.equal((await sockPost(eng.sock, "/api/flights", {}, local)).status, 404, "the socket serves only the hooks");
 
     // Claude Code closing the request (session ended) drops the decision
     const ac = new AbortController();
-    post(eng.url, "/hook/pre-tool-use", ask, {}, ac.signal).catch(() => {});
+    post(eng.sock, "/hook/pre-tool-use", ask, {}, ac.signal).catch(() => {});
     await held(1);
     ac.abort();
     await held(0);
@@ -467,7 +474,7 @@ test("server: hooks hold decisions while away, a paired device answers, the remo
     // auto: away while idle; back at the keyboard, held questions go back to the terminal
     idle = 600;
     await post(eng.url, "/api/away", { mode: "auto" });
-    const back = post(eng.url, "/hook/pre-tool-use", ask);
+    const back = post(eng.sock, "/hook/pre-tool-use", ask);
     await held(1);
     idle = 0;
     assert.equal(await (await back).text(), "");
@@ -475,7 +482,7 @@ test("server: hooks hold decisions while away, a paired device answers, the remo
 
     // permission prompts are held even when present (they race the terminal's own dialog); once the transcript shows
     // the call answered at the terminal, the hold is let go
-    const perm = post(eng.url, "/hook/permission-request", { ...ask, hook_event_name: "PermissionRequest", tool_name: "Bash", tool_input: { description: "Run tests", command: "npm test TOKEN=abc123" } });
+    const perm = post(eng.sock, "/hook/permission-request", { ...ask, hook_event_name: "PermissionRequest", tool_name: "Bash", tool_input: { description: "Run tests", command: "npm test TOKEN=abc123" } });
     await held(1);
     await new Promise((r) => setTimeout(r, 2200)); // one sweep sees the call still waiting
     appendFileSync(tp, lines("claude/session.jsonl")[9] + "\n");
@@ -496,6 +503,18 @@ test("state: the local secret is made once (0600) and kept", () => {
   assert.ok(st.secretOk(secret));
   for (const wrong of [undefined, "", secret.slice(1), secret.toUpperCase()]) assert.equal(st.secretOk(wrong), false);
   assert.equal(new State(mkdtempSync(join(tmp, "state-"))).secretOk(secret), false, "no secret on disk: nothing passes");
+});
+
+test("state: rotating the local secret makes the old one useless at once", () => {
+  const dir = mkdtempSync(join(tmp, "state-"));
+  const old = new State(dir).secret();
+  const st = new State(dir);
+  const next = st.rotateSecret();
+  assert.match(next, /^[0-9a-f]{64}$/);
+  assert.notEqual(next, old);
+  assert.equal(statSync(join(dir, "secret")).mode & 0o777, 0o600);
+  assert.equal(st.secretOk(old), false);
+  assert.ok(new State(dir).secretOk(next), "a running engine reads the file on every check");
 });
 
 test("state: rotating the token signs every device out of push", () => {
@@ -526,7 +545,7 @@ test("server: state-changing local requests need the local secret; only the loca
     // a blind POST to the hooks is refused at once and holds nothing, so nothing is pushed and the terminal asks as usual
     for (const headers of [{}, { "x-tracon-secret": "nope" }] as Record<string, string>[]) {
       const t0 = Date.now();
-      assert.equal((await post("/hook/permission-request", perm, headers)).status, 403);
+      assert.equal((await sockPost(eng.sock, "/hook/permission-request", perm, headers, AbortSignal.timeout(2000))).status, 403);
       assert.ok(Date.now() - t0 < 1000);
     }
     assert.equal(((await (await fetch(`${eng.url}/api/flights`)).json()) as any).decisions.length, 0);
@@ -611,4 +630,165 @@ test("redact masks quoted values with spaces, passwd, and Bearer tokens", () => 
   assert.equal(promptSummary(`{"password": "my pass, word", "n": 1}`), `{"password": "***", "n": 1}`);
   assert.equal(promptSummary("curl -H 'Authorization: Bearer abc.def-1' x"), "curl -H 'Authorization: *** ***' x");
   assert.equal(promptSummary("passwd=x"), "passwd=***");
+});
+
+/** POST over the engine's Unix socket, the way `tracon hook` sends; resolves once the reply has ended. */
+function sockPost(sock: string, path: string, body: unknown, headers: Record<string, string> = {}, signal?: AbortSignal): Promise<Response> {
+  return new Promise((ok, fail) => {
+    const req = request({ socketPath: sock, path, method: "POST", headers: { "content-type": "application/json", ...headers }, ...(signal ? { signal } : {}) }, (res) => {
+      const chunks: Buffer[] = [];
+      res.on("data", (c: Buffer) => chunks.push(c)).on("end", () => ok(new Response(Buffer.concat(chunks), { status: res.statusCode })));
+    });
+    req.on("error", fail);
+    req.end(JSON.stringify(body));
+  });
+}
+
+const freePort = () =>
+  new Promise<number>((ok) => {
+    const s = createServer().listen(0, "127.0.0.1", () => {
+      const p = (s.address() as { port: number }).port;
+      s.close(() => ok(p));
+    });
+  });
+
+const BIN = join(import.meta.dirname, "../../tracon-cli/bin/tracon.js");
+/** Runs the real CLI with a fake home, scratch state and its own ports; never the owner's profiles or engine. */
+function tracon(args: string[], env: Record<string, string>, input?: string) {
+  const { CLAUDE_CONFIG_DIR: _c, TRACON_PORT: _p, TRACON_REMOTE_PORT: _r, TRACON_STATE: _s, ...rest } = process.env;
+  const child = spawn(process.execPath, [BIN, ...args], { env: { ...rest, ...env }, stdio: ["pipe", "pipe", "pipe"] });
+  let out = "", err = "";
+  child.stdout.on("data", (c) => (out += c));
+  child.stderr.on("data", (c) => (err += c));
+  if (input !== undefined) child.stdin.end(input);
+  const exited = new Promise<{ code: number | null; out: string; err: string; at: number }>((ok) => child.on("exit", (code) => ok({ code, out, err, at: Date.now() })));
+  return { child, exited };
+}
+
+test("server: a held hook gets a heartbeat space every 5 s, then its JSON reply, over the socket", async () => {
+  const stateDir = mkdtempSync(join(tmp, "st-"));
+  const home = fakeHome();
+  const eng = await startEngine({ port: 0, remotePort: 0, home, windowMs: Number.MAX_SAFE_INTEGER, uiDist: join(tmp, "no-ui"), stateDir, idle: async () => 0, env: {} });
+  try {
+    assert.equal(eng.sock, join(stateDir, "engine.sock"));
+    assert.equal(statSync(stateDir).mode & 0o777, 0o700, "only you can reach the socket");
+    const secret = new State(stateDir).secret();
+    const perm = { hook_event_name: "PermissionRequest", session_id: "s1", transcript_path: join(home, "t.jsonl"), cwd: "/w", tool_name: "Bash", tool_input: { command: "ls" } };
+    const chunks: { t: number; s: string }[] = [];
+    const t0 = Date.now();
+    const done = new Promise<number | undefined>((ok, fail) => {
+      const req = request({ socketPath: eng.sock, path: "/hook/permission-request", method: "POST", headers: { "x-tracon-secret": secret } }, (res) => {
+        res.setEncoding("utf8");
+        res.on("data", (c: string) => chunks.push({ t: Date.now() - t0, s: c })).on("end", () => ok(res.statusCode));
+      });
+      req.on("error", fail);
+      req.end(JSON.stringify(perm));
+    });
+    await waitFor(async () => (chunks.length ? true : undefined), "the first heartbeat");
+    assert.equal(chunks[0]!.s, " ");
+    assert.ok(chunks[0]!.t >= 4500 && chunks[0]!.t < 7000, `first heartbeat at ${chunks[0]!.t} ms`);
+    const { decisions } = (await (await fetch(`${eng.url}/api/flights`)).json()) as any;
+    const r = await fetch(`${eng.url}/api/answer`, { method: "POST", headers: { "x-tracon-secret": secret }, body: JSON.stringify({ id: decisions[0].id, kind: "permission", allow: true }) });
+    assert.equal(r.status, 200);
+    assert.equal(await done, 200);
+    const body = chunks.map((c) => c.s).join("");
+    assert.match(body, /^ +\{/, "leading whitespace, then the JSON");
+    assert.deepEqual(JSON.parse(body).hookSpecificOutput.decision, { behavior: "allow" });
+  } finally {
+    eng.close();
+  }
+});
+
+test("server: a second engine on the same state dir refuses to start; a socket left by a dead one is replaced", async () => {
+  const stateDir = mkdtempSync(join(tmp, "st-"));
+  const opts = { port: 0, remotePort: 0, home: fakeHome(), windowMs: Number.MAX_SAFE_INTEGER, uiDist: join(tmp, "no-ui"), stateDir, idle: async () => 0, env: {} };
+  const eng = await startEngine(opts);
+  try {
+    await assert.rejects(startEngine(opts), /another engine is already listening/);
+    assert.equal((await fetch(`${eng.url}/api/flights`)).status, 200, "the first one keeps serving");
+  } finally {
+    eng.close();
+  }
+  writeFileSync(join(stateDir, "engine.sock"), ""); // what a crash leaves behind
+  const again = await startEngine(opts);
+  try {
+    assert.equal((await sockPost(again.sock, "/hook/pre-tool-use", {}, {})).status, 403);
+    // the CLI sets away mode over the socket too, never sending the secret to whoever holds the TCP port
+    const secret = new State(stateDir).secret();
+    assert.equal((await sockPost(again.sock, "/api/away", { mode: "on" })).status, 403);
+    assert.equal((await sockPost(again.sock, "/api/away", { mode: "on" }, { "x-tracon-secret": secret })).status, 200);
+    assert.equal((await sockPost(again.sock, "/api/answer", {}, { "x-tracon-secret": secret })).status, 404, "nothing else of the API");
+  } finally {
+    again.close();
+  }
+});
+
+test("tracon hook: prints the answer, and a stopped engine leaves the prompt to the terminal within ~16 s", { timeout: 60_000 }, async () => {
+  const stateDir = mkdtempSync(join(tmp, "st-"));
+  const env = { HOME: fakeHome(), TRACON_STATE: stateDir, TRACON_PORT: String(await freePort()), TRACON_REMOTE_PORT: String(await freePort()) };
+  const engine = tracon(["start", "--no-open"], env);
+  const base = `http://127.0.0.1:${env.TRACON_PORT}`;
+  const held = (n: number) => waitFor(async () => {
+    const s = await fetch(`${base}/api/flights`).then((r) => r.json() as any, () => undefined);
+    return s?.decisions.length === n ? s.decisions : undefined;
+  }, `${n} held decisions`);
+  try {
+    await held(0);
+    const away = await tracon(["away", "on"], env).exited;
+    assert.deepEqual([away.code, away.out.trim()], [0, "away mode: on (away: questions and plans wait for your devices)"]);
+    const secret = readFileSync(join(stateDir, "secret"), "utf8").trim();
+    const perm = JSON.stringify({ hook_event_name: "PermissionRequest", session_id: "s1", transcript_path: join(env.HOME, "t.jsonl"), cwd: "/w", tool_name: "Bash", tool_input: { command: "ls" } });
+
+    const answered = tracon(["hook", "permission-request"], env, perm);
+    const [d] = await held(1);
+    await fetch(`${base}/api/answer`, { method: "POST", headers: { "x-tracon-secret": secret }, body: JSON.stringify({ id: d.id, kind: "permission", allow: true }) });
+    const a = await answered.exited;
+    assert.equal(a.code, 0);
+    assert.deepEqual(JSON.parse(a.out), { hookSpecificOutput: { hookEventName: "PermissionRequest", decision: { behavior: "allow" } } });
+
+    const stuck = tracon(["hook", "permission-request"], env, perm);
+    await held(1);
+    engine.child.kill("SIGSTOP"); // Ctrl-Z, a debugger, a wedged loop: the socket still accepts but nothing answers
+    const stoppedAt = Date.now();
+    const s = await stuck.exited;
+    assert.equal(s.code, 0);
+    assert.equal(s.out, "", "no output: Claude Code shows its own dialog");
+    assert.ok(s.at - stoppedAt < 17_000, `gave up ${s.at - stoppedAt} ms after the engine stopped`);
+
+    // engine gone altogether: no socket, nothing printed, at once
+    engine.child.kill("SIGCONT");
+    engine.child.kill("SIGTERM");
+    await engine.exited;
+    const t0 = Date.now();
+    const none = await tracon(["hook", "pre-tool-use"], env, perm).exited;
+    assert.deepEqual([none.code, none.out], [0, ""]);
+    assert.ok(none.at - t0 < 5000);
+  } finally {
+    engine.child.kill("SIGCONT");
+    engine.child.kill("SIGKILL");
+  }
+});
+
+test("tracon start: a port another program holds gives a clear line and exit 1; the squatter gets no hook traffic", { timeout: 30_000 }, async () => {
+  const hits: string[] = [];
+  const squatter = createServer((req, res) => (hits.push(`${req.method} ${req.url} ${req.headers["x-tracon-secret"] ? "with secret" : ""}`), res.end("{}")));
+  await new Promise<void>((ok) => squatter.listen(0, "127.0.0.1", ok));
+  const p = (squatter.address() as { port: number }).port;
+  const stateDir = mkdtempSync(join(tmp, "st-"));
+  const env = { HOME: fakeHome(), TRACON_STATE: stateDir, TRACON_PORT: String(p), TRACON_REMOTE_PORT: String(await freePort()) };
+  try {
+    const r = await tracon(["start", "--no-open"], env).exited;
+    assert.equal(r.code, 1);
+    assert.match(r.err, new RegExp(`port ${p} is in use by another process \\(lsof -iTCP:${p}\\)`));
+    assert.doesNotMatch(r.err, /uncaughtException|unhandledRejection/);
+    const h = await tracon(["hook", "permission-request"], env, '{"hook_event_name":"PermissionRequest"}').exited;
+    assert.deepEqual([h.code, h.out], [0, ""]);
+    assert.deepEqual(hits, [], "the hooks never go to the TCP port");
+    const a = await tracon(["away", "on"], env).exited;
+    assert.notEqual(a.code, 0);
+    assert.match(a.err, /tracon start/);
+    assert.doesNotMatch(hits.join("\n"), /with secret/, "the squatter never sees the secret");
+  } finally {
+    squatter.close();
+  }
 });

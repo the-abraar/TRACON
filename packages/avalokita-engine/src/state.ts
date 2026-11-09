@@ -1,13 +1,14 @@
 import { randomBytes, timingSafeEqual } from "node:crypto";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { connect } from "node:net";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import webpush, { type PushSubscription } from "web-push";
 
 /**
  * TRACON's own files under ~/.config/tracon (TRACON_STATE overrides): the device token, the local secret, the web-push
- * keys and the subscribed devices. The only engine module that writes, and only these names in that directory
- * (scripts/check.sh).
+ * keys, the subscribed devices and the hooks' socket (engine.sock). The only engine module that writes, and only these
+ * names in that directory (scripts/check.sh).
  */
 type Name = "token" | "secret" | "vapid.json" | "subscriptions.json";
 
@@ -20,9 +21,12 @@ function same(given: string | undefined, want: string | undefined): boolean {
 
 export class State {
   readonly dir: string;
+  /** The Unix socket the hooks (`tracon hook`) talk to. */
+  readonly sock: string;
 
   constructor(dir = process.env.TRACON_STATE ?? join(homedir(), ".config", "tracon")) {
     this.dir = dir;
+    this.sock = join(dir, "engine.sock");
   }
 
   private read(name: Name): string | undefined {
@@ -64,8 +68,32 @@ export class State {
     return t;
   }
 
+  /** A new secret; the old one stops working at once. Open Flight Deck pages need a reload. */
+  rotateSecret(): string {
+    const t = randomBytes(32).toString("hex");
+    this.write("secret", t + "\n");
+    return t;
+  }
+
   secretOk(given: string | undefined): boolean {
     return same(given, this.read("secret")?.trim());
+  }
+
+  /**
+   * Readies the socket path for the engine to listen on: the state dir made 0700 (so no other user can connect), and a
+   * socket a dead engine left behind removed. Refuses while another engine still answers on it.
+   */
+  async freeSocket(): Promise<string> {
+    mkdirSync(this.dir, { recursive: true, mode: 0o700 });
+    chmodSync(this.dir, 0o700);
+    if (existsSync(this.sock)) {
+      const live = await new Promise<boolean>((ok) => {
+        const s = connect(this.sock).once("connect", () => (s.destroy(), ok(true))).once("error", () => ok(false));
+      });
+      if (live) throw new Error(`another engine is already listening on ${this.sock}`);
+      rmSync(this.sock, { force: true });
+    }
+    return this.sock;
   }
 
   vapid(): { publicKey: string; privateKey: string } {
