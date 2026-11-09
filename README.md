@@ -261,6 +261,17 @@ Permission prompts are always listed: Claude Code shows its own dialog at the sa
 
 **Security**: the hooks endpoint listens only on `127.0.0.1:4040` and is never served on the remote port. Every state-changing request to that port (the hooks, answers, away mode, push sign-up) must carry a random local secret kept in `~/.config/tracon/secret` (mode 0600): the hooks send it as a header (`tracon hooks install` writes it into each profile's `settings.json`) and the Flight Deck gets it in the page the engine serves, so a website or a stray script can't approve a prompt with a blind POST. The live socket (`/ws`) needs the secret too, sent as a WebSocket subprotocol, so a page served by another local server (a dev server, a notebook) can't read your sessions, and the deck's page is served with `Cache-Control: no-store`. It does not stop a program running as your own user, which can read that file or load the deck. The remote port (`127.0.0.1:4041`, published by `tailscale serve` with HTTPS on your tailnet only) needs the device token from `tracon pair` on every request (the deck sends it as a header, and as a subprotocol on the socket, never in a URL). Anyone with the pairing link can approve commands on your Mac: keep it private, and `tracon pair --rotate` to sign out every device and stop all pushes (a device you pair again gets pushes again once it opens the app). Web pushes are encrypted end to end, but they show on lock screens, so they carry only the callsign and one short line: the first line of a question or of a plan, or the tool's name for a permission prompt (never the command or tool input), plus `(outside sandbox)` when the call asks to skip the sandbox and the path a `Read`, `Grep` or `Glob` would read.
 
+Who can do what (the trust model):
+
+| Who | Can read your sessions and held prompts? | Can answer a prompt? |
+|---|---|---|
+| A paired device (phone, tablet, laptop on your tailnet) | Yes, with the device token | Yes: that is the point. `tracon pair --rotate` revokes every device |
+| A website you visit | No: Host and Origin checks, no CORS, and the deck can't be framed | No |
+| Another user account on the Mac | Yes: `127.0.0.1` is shared by every account on the Mac, though the secret file and `settings.json` are mode 0600 | Yes, through the deck. TRACON assumes a Mac with one user |
+| A program running as your own user (another agent's shell, an install script) | Yes | Yes: it can read the secret like you can. TRACON trusts your user account, as Claude Code's own `settings.json` does |
+
+The local secret lives in four places: `~/.config/tracon/secret`, the hook headers in each profile's `settings.json`, the settings backups in `~/.config/tracon/backups`, and the deck page served on `127.0.0.1:4040`. Hooks installed before 2026-11-08 left `settings.json` readable by other users: run `tracon hooks install` again to make it 0600.
+
 ---
 
 ## 🗺️ Project Roadmap
