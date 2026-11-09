@@ -22,7 +22,8 @@ const TYPES: Record<string, string> = {
   ".webmanifest": "application/manifest+json",
 };
 // Only pages served from this machine may open the local socket or POST to it; stops any website you visit from reading
-// your sessions or answering them. Claude Code's hook requests carry no Origin.
+// your sessions or answering them. Claude Code's hook requests carry no Origin. Any local port passes, so the socket also
+// needs the local secret: a page from another local server (a dev server, a notebook) passes this check but has no secret.
 const LOCAL_ORIGIN = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
 // The local listener also checks Host: a DNS-rebinding page is same-origin with it and sends no foreign Origin on GET.
 const LOCAL_HOST = /^(localhost|127\.0\.0\.1)(:\d+)?$/;
@@ -31,6 +32,10 @@ const LOCAL_HOST = /^(localhost|127\.0\.0\.1)(:\d+)?$/;
 // shortcut: a program running as you can read ~/.config/tracon/secret or fetch the deck's page, so this stops blind
 // POSTs, not your own account; move the hooks and API to a Unix socket with peer checks if that ever matters.
 const SECRET_HEADER = "x-tracon-secret";
+// Browsers cannot set headers on a WebSocket, so the deck sends its credential (local secret or device token) as a
+// subprotocol: ["tracon", <credential>]. The server echoes only "tracon", so the credential stays out of the URL and reply.
+const WS_PROTOCOL = "tracon";
+const offered = (req: IncomingMessage) => String(req.headers["sec-websocket-protocol"] ?? "").split(",").map((p) => p.trim());
 const MAX_BODY = 1 << 20;
 const MODES = new Set<AwayMode>(["auto", "on", "off"]);
 
@@ -49,7 +54,7 @@ export interface EngineOptions {
   stateDir?: string;
   /** seconds since the last keyboard/mouse input; tests inject it */
   idle?: () => Promise<number | undefined>;
-  /** read for CLAUDE_CONFIG_DIR, TRACON_WINDOW_MIN, TRACON_TIERS, TRACON_QUOTA */
+  /** read for CLAUDE_CONFIG_DIR, TRACON_WINDOW_MIN, TRACON_TIERS, TRACON_QUOTA, TRACON_REMOTE_HOST */
   env?: NodeJS.ProcessEnv;
 }
 
@@ -182,6 +187,15 @@ export async function startEngine(opts: EngineOptions = {}) {
   }
 
   const localOk = (req: IncomingMessage) => state.secretOk(req.headers[SECRET_HEADER] as string | undefined);
+  // The remote listener checks Host too (DNS rebinding): loopback, or the *.ts.net name `tailscale serve` forwards.
+  // TRACON_REMOTE_HOST (comma-separated host names) replaces the .ts.net rule for another front end.
+  const remoteHosts = env.TRACON_REMOTE_HOST?.split(",").map((h) => h.trim().toLowerCase()).filter(Boolean);
+  const hostOk = (remote: boolean, host = "") => {
+    if (LOCAL_HOST.test(host)) return true;
+    if (!remote) return false;
+    const name = host.replace(/:\d+$/, "").toLowerCase();
+    return remoteHosts?.length ? remoteHosts.includes(name) : /^[a-z0-9-]+(\.[a-z0-9-]+)*\.ts\.net$/.test(name);
+  };
   // Top-level catch for every request: a throw answers 500 instead of leaving the client hanging. Claude Code treats a
   // non-2xx hook reply as no answer and asks at the terminal, so a broken engine fails open.
   const handler = (remote: boolean) => async (req: IncomingMessage, res: ServerResponse) => {
@@ -194,7 +208,7 @@ export async function startEngine(opts: EngineOptions = {}) {
     }
   };
   const route = async (remote: boolean, req: IncomingMessage, res: ServerResponse) => {
-    if (!remote && !LOCAL_HOST.test(req.headers.host ?? "")) return json(res, 403, { error: "foreign host" });
+    if (!hostOk(remote, req.headers.host)) return json(res, 403, { error: "foreign host" });
     const url = new URL(req.url ?? "/", "http://x");
     let path: string;
     try {
@@ -224,17 +238,31 @@ export async function startEngine(opts: EngineOptions = {}) {
     // only the page served on the local port (Host already checked) carries the secret; the remote one never does
     if (!remote && extname(file) === ".html")
       body = Buffer.from(body.toString("utf8").replace("<head>", `<head><meta name="tracon-secret" content="${state.secret()}">`));
-    // no site may frame the deck and trick a click on Allow
-    res.writeHead(200, { "content-type": TYPES[extname(file)] ?? "application/octet-stream", "content-security-policy": "frame-ancestors 'none'", "x-frame-options": "DENY" }).end(body);
+    // no site may frame the deck and trick a click on Allow; the local page carries the secret, so keep it out of the disk cache
+    res
+      .writeHead(200, {
+        "content-type": TYPES[extname(file)] ?? "application/octet-stream",
+        "content-security-policy": "frame-ancestors 'none'",
+        "x-frame-options": "DENY",
+        "x-content-type-options": "nosniff",
+        ...(extname(file) === ".html" ? { "cache-control": "no-store" } : {}),
+      })
+      .end(body);
   };
 
   const listen = async (remote: boolean, p: number) => {
     const server = createServer(handler(remote));
     const verifyClient = remote
-      ? (info: { req: IncomingMessage }) => state.tokenOk(new URL(info.req.url ?? "/", "http://x").searchParams.get("t") ?? undefined)
-      : (info: { origin?: string; req: IncomingMessage }) =>
-          LOCAL_HOST.test(info.req.headers.host ?? "") && (!info.origin || LOCAL_ORIGIN.test(info.origin));
-    const wss = new WebSocketServer({ server, path: "/ws", verifyClient });
+      ? ({ req }: { req: IncomingMessage }) =>
+          hostOk(true, req.headers.host) &&
+          (offered(req).some((p) => state.tokenOk(p)) ||
+            // shortcut: decks cached before the subprotocol still send ?t=<token>; drop this in the next release
+            state.tokenOk(new URL(req.url ?? "/", "http://x").searchParams.get("t") ?? undefined))
+      : ({ origin, req }: { origin?: string; req: IncomingMessage }) =>
+          hostOk(false, req.headers.host) && (!origin || LOCAL_ORIGIN.test(origin)) && offered(req).some((p) => state.secretOk(p));
+    // echo the fixed name, never the credential; a browser drops a socket whose offered protocols got no echo
+    const handleProtocols = (protocols: Set<string>) => (protocols.has(WS_PROTOCOL) ? WS_PROTOCOL : false);
+    const wss = new WebSocketServer({ server, path: "/ws", verifyClient, handleProtocols });
     wss.on("connection", (ws) => ws.send(snapshot));
     sockets.push(wss);
     await new Promise<void>((ok, fail) => server.once("error", fail).listen(p, "127.0.0.1", ok));

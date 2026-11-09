@@ -14,7 +14,7 @@ Built and judged 2026-10-16. I read PLAN.md, findings.md, README.md and combo_of
 - **Tailing**: FSEvents (`fs.watch` recursive) plus a 2 s poll; reads only appended bytes and stops at the last newline, so half-written lines are never parsed. Files are opened `r` and closed at once.
 - **Normalizing**: Claude user/assistant/tool_use/tool_result/turn-end entries and agy USER_INPUT/PLANNER_RESPONSE/GENERIC steps map to the six flight states. Token usage is de-duplicated per API response. Claude subagents (`<session>/subagents/agent-*.jsonl`, role from `.meta.json`) and running agy background tasks appear as `subagents`.
 - **Live process signal**: Claude Code's `sessions/<pid>.json` gives `pid` and `status` (busy/idle); a dead pid shows `aborted`.
-- **Server**: one process on `127.0.0.1:4040` serving the UI, `/api/flights` and `/ws`; WebSocket refuses non-localhost origins.
+- **Server**: one process on `127.0.0.1:4040` serving the UI, `/api/flights` and `/ws`; WebSocket refuses non-localhost origins and, since 2026-11-08, any client without the local secret (sent as a subprotocol).
 - **CLI**: `tracon start [--no-open]` and `tracon status`.
 - **Execution DAG (p2_2)**: `GET /api/trace?flight=<callsign>` returns a bounded list of turn, tool and subagent nodes with latency and tokens; the deck draws it with React Flow (VIEW DAG on a card).
 - **Holding alerts (p2_3)**: opt-in ALERTS toggle; chime plus browser notification when a flight enters holding, once per flight per 2 min; the tab title shows the holding count.
@@ -123,7 +123,7 @@ No new commits since f8c244d (the Host-header and bad-percent-encoding fixes), s
 2. **The download doesn't match the README.** `beta_0.1` and the brew formula don't include the partner app. README.md:186 says the app is not on Homebrew, which contradicts lines 29-33. The badge says Linux, but the beta is macOS only. Setup step 2 points at `products/Caffeinate-my-mac`, a folder only the owner has.
 3. **No LICENSE, and the public screenshots show a client's name** (`slides/screenshots/fleet.jpg`). The name TRACON hasn't been checked for trademarks. It is a common FAA acronym, so it would be hard to register, and TRACON Pharmaceuticals already uses it in another field.
 4. **Blind file-write approvals on the phone** (above). Show `content` for Write, a diff for Edit and the JSON for MCP tools.
-5. **Revoking a device is all or nothing**, and the WebSocket token travels in the query string. Fix: one token per device with `tracon devices list|revoke`. (Rotate stops all pushes, and push bodies are trimmed, since 2026-10-19.)
+5. **Revoking a device is all or nothing.** (Since 2026-11-08 the WebSocket token travels as a subprotocol, not in the query string; `?t=` is still accepted for one release.) Fix: one token per device with `tracon devices list|revoke`. (Rotate stops all pushes, and push bodies are trimmed, since 2026-10-19.)
 6. **Nothing keeps the engine running, and nothing checks the code.** There is no launchd or brew service, no top-level error handler and no CI (`.github/workflows` doesn't exist). The owner's engine is up today only because it was started by hand.
 7. **A device whose token was rotated stays on "Connecting..." forever.** App.tsx:50-52 retries every 1.5 s, and the pair form shows only when no token is stored (App.tsx:104).
 8. **Cards and inbox entries don't say what the agent is doing.** They lead with the callsign and two folder names. Everyone except the owner sees `SQ-20` and `QUOTA n/a`, which was confirmed on the made-up home.

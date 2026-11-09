@@ -6,7 +6,7 @@ import { AccountsRail } from "./components/fleet/AccountsRail.tsx";
 import { FleetBar } from "./components/fleet/FleetBar.tsx";
 import { FlightCard } from "./components/fleet/FlightCard.tsx";
 import { FlightDag } from "./components/radar/FlightDag.tsx";
-import { api, isLocal, savePairToken, token, wsUrl } from "./lib/remote.ts";
+import { api, isLocal, savePairToken, token, wsProtocols, wsUrl } from "./lib/remote.ts";
 import { useTheme } from "./lib/theme.ts";
 
 /** Pairs this device from a pasted `tracon pair` link: the iOS Home Screen app cannot open the link itself. */
@@ -46,7 +46,7 @@ function useAirspace() {
     let retry: number | undefined;
     let stopped = false;
     const connect = () => {
-      ws = new WebSocket(wsUrl());
+      ws = new WebSocket(wsUrl(), wsProtocols());
       ws.onopen = () => setOnline(true);
       ws.onmessage = (m) => setSnap(JSON.parse(m.data));
       ws.onclose = () => {
