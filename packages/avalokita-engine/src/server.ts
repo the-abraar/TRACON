@@ -274,7 +274,13 @@ export async function startEngine(opts: EngineOptions = {}) {
   let pending: NodeJS.Timeout | undefined;
   const watchers = watchDirs(air.roots(), () => {
     clearTimeout(pending);
-    pending = setTimeout(refresh, 150);
+    pending = setTimeout(() => {
+      try {
+        refresh();
+      } catch (e) {
+        console.error("tracon: refresh failed:", e); // same guard as the poll: a watch event must not stop the engine
+      }
+    }, 150);
   });
   // the poll finds new profiles/sessions, moves time-based states (holding after 60s, leaving the window), reads the
   // keyboard idle time for auto-away, and lets go of permission prompts the terminal already answered

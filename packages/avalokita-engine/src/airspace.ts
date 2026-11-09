@@ -39,6 +39,7 @@ interface Tracked {
 /** Scans every runtime's transcripts, tails the recent ones and turns each session into a FlightPacket. */
 export class Airspace {
   private tracked = new Map<string, Tracked>();
+  private warned = new Set<string>(); // transcripts that already logged a bad line
   private tailer = new Tailer();
   private prev = new Map<string, FlightPacket>();
   /** callsign -> transcript path, for trace lookups */
@@ -198,8 +199,14 @@ export class Airspace {
     }
     e.live = live;
     for (const line of this.tailer.read(t.path)) {
-      const ev = e.parse(line);
-      if (ev) e.flight.apply(ev);
+      try {
+        const ev = e.parse(line);
+        if (ev) e.flight.apply(ev);
+      } catch (err) {
+        // one malformed line must not take the engine down; skip it and log once per transcript
+        if (!this.warned.has(t.path)) console.error(`tracon: skipped a bad line in ${t.path}:`, err);
+        this.warned.add(t.path);
+      }
     }
   }
 }
