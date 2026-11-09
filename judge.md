@@ -180,3 +180,11 @@ No new commits since f8c244d (the Host-header and bad-percent-encoding fixes), s
 - **Tests:** hooks.test.js (command form, no secret, old HTTP groups replaced and removed, `sendHook` with heartbeats, refusals, silence and no socket). engine.test.ts: hooks over the socket, 404 on TCP, the heartbeat at about 5 s, a second engine refused, a stale socket replaced, the real CLI answering a held prompt, the engine SIGSTOPped mid-hold (`tracon hook` exits 0 with no output in under 17 s), and a pre-bound port (clear line, exit 1, the squatter gets no request; `tracon away on` then exits non-zero and the squatter never sees the secret). `/api/away` on the socket needs the secret and is the only API path there; `tracon away on` against a real engine works over the socket. `scripts/check.sh` passes all 7 steps, 57 tests.
 - **Checked:** `tracon hooks install` on a fake HOME writes the two command hooks and no secret; the hook command runs from `sh` and exits 0. The install applied in memory to copies of all 5 real profiles keeps the caveman and artifact-guard groups byte-identical and leaves no `x-tracon-secret`; `ensure_caveman.py check` is ALL GOOD (nothing was written to any real profile).
 - **Not checked:** a live Claude Code session with the new hooks (owner step after merge), and the bun-built binary running `tracon hook`.
+
+## Update (2026-11-08, release hygiene)
+
+- CI (`.github/workflows/check.yml`) pins `actions/checkout` and `actions/setup-node` to commit SHAs, runs with `permissions: contents: read`, and checks out without persisting the token.
+- `scripts/build-binary.sh` also writes `release/SHA256SUMS`. A new manual workflow, `release-build` (`gh workflow run release-build --ref <tag>`), builds both zips on macOS, signs build provenance (`actions/attest-build-provenance`) and uploads the zips plus `SHA256SUMS` as a workflow artifact. It does not publish a release.
+- `SECURITY.md` says how to report a vulnerability privately and states the same-user trust limit. The README download section points browser users to Homebrew and checksums instead of removing the quarantine flag.
+- The dated product critique under `DOCS/` is removed from the repo; critiques live outside audited repos.
+- **Still open:** the binaries are not signed or notarized by Apple; the first release with `SHA256SUMS` and provenance is the next one.
