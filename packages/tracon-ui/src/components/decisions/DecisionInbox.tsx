@@ -2,7 +2,7 @@ import { Check, ClipboardList, KeyRound, MessageCircleQuestion, X, type LucideIc
 import { useEffect, useRef, useState } from "react";
 import type { Answer, Decision } from "../../../../avalokita-engine/src/types.ts";
 import { post } from "../../lib/remote.ts";
-import { permissionBody, permissionDiff, permissionTarget, questionAnswer, questionsOf } from "./answer.ts";
+import { permissionBody, permissionDiff, permissionExtras, permissionTarget, questionAnswer, questionsOf } from "./answer.ts";
 
 const KIND: Record<Decision["kind"], { label: string; icon: LucideIcon }> = {
   question: { label: "QUESTION", icon: MessageCircleQuestion },
@@ -159,6 +159,7 @@ function PermissionForm({ d, busy, send }: FormProps) {
   const [message, setMessage] = useState("");
   const body = permissionBody(d);
   const diff = permissionDiff(d);
+  const extras = permissionExtras(d);
   const desc = typeof d.input.description === "string" ? d.input.description : undefined;
   return (
     <div className="grid gap-2">
@@ -166,7 +167,9 @@ function PermissionForm({ d, busy, send }: FormProps) {
         <span className="font-mono text-cyan-200">{d.tool}</span>
         {desc && <span className="text-slate-400"> · {desc}</span>}
       </div>
+      {d.input.dangerouslyDisableSandbox === true && <div role="alert" className="rounded border border-red-600 bg-red-950/70 px-3 py-2 font-mono text-xs font-semibold text-red-200">Runs outside the sandbox</div>}
       <pre className="max-h-60 overflow-auto whitespace-pre-wrap break-all rounded bg-slate-950/70 p-3 text-xs text-slate-200">{permissionTarget(d)}</pre>
+      {extras.length > 0 && <pre aria-label="Other fields" className="max-h-40 overflow-auto whitespace-pre-wrap break-all rounded bg-slate-950/70 p-3 text-xs text-slate-300">{extras.join("\n")}</pre>}
       {body !== undefined && <pre aria-label="File content" className="max-h-72 overflow-auto whitespace-pre-wrap break-all rounded bg-slate-950/70 p-3 text-xs text-slate-300">{body}</pre>}
       {diff && (
         <pre aria-label="Edit diff" className="max-h-72 overflow-auto whitespace-pre-wrap break-all rounded bg-slate-950/70 py-2 text-xs text-slate-400">

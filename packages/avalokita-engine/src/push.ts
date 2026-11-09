@@ -12,7 +12,8 @@ export function parseSubscription(v: any): PushSubscription | undefined {
 }
 
 /** Notification text for a held decision. Lock screens show it, so it is one short line: the first line of the question
- * or of the plan, or only the tool's name for a permission (never its command, path or input). */
+ * or of the plan, or for a permission the tool's name (never its command or input), plus "(outside sandbox)" for a sandbox
+ * override and the path a Grep, Glob or Read would read, since those are what make the call dangerous. */
 export function pushBody(d: Decision): { title: string; body: string; id: string } {
   const i = d.input as Record<string, any>;
   const firstLine = (v: unknown) => String(v ?? "").split("\n").map((l) => l.trim()).find(Boolean) ?? "";
@@ -21,9 +22,14 @@ export function pushBody(d: Decision): { title: string; body: string; id: string
       ? firstLine(i.questions?.[0]?.question) || "Question"
       : d.kind === "plan"
         ? `Plan approval: ${firstLine(i.plan).replace(/^#+\s*/, "")}`
-        : `Permission: ${d.tool}`;
+        : `Permission: ${d.tool}${i.dangerouslyDisableSandbox === true ? " (outside sandbox)" : ""}${readPath(d.tool, i)}`;
   return { title: `${d.callsign} needs you`, body: line.slice(0, 100), id: d.id };
 }
+
+const readPath = (tool: string, i: Record<string, any>) => {
+  const p = tool === "Read" ? i.file_path : tool === "Grep" || tool === "Glob" ? i.path : undefined;
+  return typeof p === "string" && p ? ` ${p}` : "";
+};
 
 /** Web push (encrypted end to end; Apple/Google relay it) to every subscribed device. Dead subscriptions are dropped. */
 export class Pusher {
