@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { chmodSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -109,5 +110,14 @@ test("sendHook passes the engine's reply through, and gives up quietly when the 
   } finally {
     srv.closeAllConnections();
     srv.close();
+  }
+});
+
+test("tracon hook fails open: an unknown event or no engine prints nothing and exits 0 (exit 2 would block the tool)", () => {
+  const cli = join(import.meta.dirname, "../bin/tracon.js");
+  const env = { ...process.env, TRACON_STATE: join(tmp, "no-engine") };
+  for (const ev of ["post-tool-use", "pre-tool-use", undefined]) {
+    const r = spawnSync(process.execPath, [cli, "hook", ...(ev ? [ev] : [])], { input: '{"tool_name":"Write","x":"—"}', encoding: "utf8", env, timeout: 20_000 });
+    assert.deepEqual([r.status, r.stdout], [0, ""], `hook ${ev}: ${r.stderr}`);
   }
 });
