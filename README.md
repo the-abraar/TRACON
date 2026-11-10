@@ -199,6 +199,8 @@ scripts/check.sh                               # typecheck, read-only guard, tes
 
 **`tracon` on PATH**: `cd packages/tracon-cli && npm link` puts a `tracon` command (a symlink to this checkout) in npm's global bin, so `tracon status` works from any directory. `npm unlink -g tracon-cli` removes it.
 
+**`tracon doctor`** prints one `ok` / `warn` / `FAIL` line per check and exits 1 if anything failed: the launchd agent and whether its `TRACON_*` variables match your shell, the engine on both ports, its checkout against `origin/main` (as of your last `git fetch`), the TRACON hooks in every profile (old HTTP hooks, or a hook pointing at a path that no longer exists, fail), the local secret, pairing and push subscriptions, Tailscale and its `serve` mapping, each profile's usage mirror age, and `TRACON_TIERS`. It only reads, and prints no secret, token or push endpoint.
+
 **Start at login** (macOS launchd; restarts the engine if it dies). Run `npm run build -w tracon-ui` once (from source) so the engine has a Flight Deck to serve, then:
 
 ```bash
@@ -218,7 +220,7 @@ tracon service uninstall   # stop it and remove the plist
 - **ALERTS**: off by default. Click it once to allow the chime and notifications (the browser asks for notification permission). From then on, a flight that enters holding plays a two-tone chime and shows a system notification, at most once per flight every 2 minutes. The tab title always shows the holding count, e.g. `(1) HOLDING · TRACON ATC`. Alerts need the Flight Deck tab open (it can be in the background); after a reload, the chime starts working again on your first click on the page.
 
 Optional environment variables:
-- `TRACON_TIERS="BIZ=team_100,WORK=api_usage"`: the plan behind each Claude profile (suffix of `~/.claude-<suffix>`; `""` is `~/.claude`). Unlisted profiles show as `pro_20`.
+- `TRACON_TIERS="BIZ=team_100,WORK=api_usage"`: the plan behind each Claude profile (suffix of `~/.claude-<suffix>`; `""` is `~/.claude`): `pro_20`, `team_100`, `max`, `api_usage` or `gemini`. Unlisted profiles show as `pro_20`; `tracon doctor` flags a value that isn't one of these (the engine ignores it).
 - `TRACON_QUOTA="HAT=/path/usage-hat.md"`: a usage mirror per profile, in the format `~/.claude-hat/statusline-usage.py` writes. The card's QUOTA gauge shows its 5-hour percentage until that window resets, and the deck's left accounts rail lists every profile with its 5-hour and weekly percentages and reset times; profiles without a mirror stay `n/a`. TRACON only reads the file.
 - `TRACON_WINDOW_MIN=30`: how long after its last transcript line a session stays on the radar.
 - `TRACON_PORT=4040` (also read by `tracon status`), and `CLAUDE_CONFIG_DIR` (also scanned).

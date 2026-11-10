@@ -1,7 +1,7 @@
 // FlightPacket is copied verbatim from PLAN.md section 3.3; the UI imports this file too.
 export type FlightState = "preflight" | "cruising" | "tool_executing" | "holding" | "landed" | "aborted";
 export type ToolAction = "read" | "write" | "bash" | "subagent" | "other";
-export type AccountTier = "pro_20" | "team_100" | "api_usage" | "gemini";
+export type AccountTier = "pro_20" | "team_100" | "max" | "api_usage" | "gemini";
 
 export interface FlightPacket {
   id: string;

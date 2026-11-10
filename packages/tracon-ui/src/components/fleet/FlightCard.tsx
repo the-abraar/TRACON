@@ -3,7 +3,7 @@ import type { FlightPacket, FlightState, ToolAction } from "../../../../avalokit
 
 export const tokens = (n: number) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(1)}k` : String(n));
 
-export const SQUAWK: Record<FlightPacket["accountTier"], string> = { pro_20: "SQ-20", team_100: "SQ-100", api_usage: "SQ-API", gemini: "SQ-AGY" };
+export const SQUAWK: Record<FlightPacket["accountTier"], string> = { pro_20: "SQ-20", team_100: "SQ-100", max: "SQ-MAX", api_usage: "SQ-API", gemini: "SQ-AGY" };
 
 const STATE: Record<FlightState, { label: string; tone: string }> = {
   preflight: { label: "PREFLIGHT", tone: "bg-sky-900/60 text-sky-200" },
