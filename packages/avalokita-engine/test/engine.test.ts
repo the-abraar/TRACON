@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { appendFileSync, copyFileSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { appendFileSync, chmodSync, copyFileSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { createServer, get, request } from "node:http";
 import { tmpdir } from "node:os";
@@ -524,7 +524,10 @@ test("state: rotating the local secret makes the old one useless at once", () =>
 test("state: rotation never reuses a leftover temp file with wider permissions", () => {
   const dir = mkdtempSync(join(tmp, "state-"));
   new State(dir).secret();
-  writeFileSync(join(dir, `secret.${process.pid}.tmp`), "stale\n", { mode: 0o644 });
+  const stale = join(dir, `secret.${process.pid}.tmp`);
+  writeFileSync(stale, "stale\n");
+  chmodSync(stale, 0o644); // explicit: a strict umask would otherwise make the fixture 0600 and hide the bug
+  assert.equal(statSync(stale).mode & 0o777, 0o644);
   const next = new State(dir).rotateSecret();
   assert.equal(statSync(join(dir, "secret")).mode & 0o777, 0o600);
   assert.equal(readFileSync(join(dir, "secret"), "utf8").trim(), next);
