@@ -49,7 +49,7 @@ export function promptSummary(text: string): string {
 // 8192-char cap) and Bearer tokens.
 const redact = (s: string) => s
   .replace(/\bBearer\s+[\w.~+/=-]+/gi, "Bearer ***")
-  .replace(/(api[_-]?key|token|secret|passw(?:or)?d|authorization)(["']?\s*[=:]\s*)("[^"]*"?|'[^']*'?|[^\s"',}]+)/gi,
+  .replace(/(api[_-]?key|token|secret|passw(?:or)?d|authorization)(["']?\s*[=:]\s*)("(?:\\.|[^"\\])*"?|'(?:\\.|[^'\\])*'?|[^\s"',}]+)/gi,
     (_, k, sep, v) => `${k}${sep}${/^["']/.test(v) ? v[0] + "***" + v[0] : "***"}`);
 
 function describe(t: ToolCall): NonNullable<FlightPacket["activeTool"]> {

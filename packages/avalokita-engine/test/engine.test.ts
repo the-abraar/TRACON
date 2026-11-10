@@ -636,6 +636,11 @@ test("redact masks quoted values with spaces, passwd, and Bearer tokens", () => 
   assert.equal(promptSummary("passwd=x"), "passwd=***");
 });
 
+test("redact does not stop at an escaped quote inside a secret, closed or cut off", () => {
+  assert.equal(promptSummary(String.raw`password="ab\"hunter2" next`), `password="***" next`);
+  assert.ok(!promptSummary(String.raw`token="ab\"hunter2`).includes("hunter2"));
+});
+
 /** POST over the engine's Unix socket, the way `tracon hook` sends; resolves once the reply has ended. */
 function sockPost(sock: string, path: string, body: unknown, headers: Record<string, string> = {}, signal?: AbortSignal): Promise<Response> {
   return new Promise((ok, fail) => {
