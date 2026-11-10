@@ -10,7 +10,7 @@ import webpush, { type PushSubscription } from "web-push";
  * keys, the subscribed devices and the hooks' socket (engine.sock). The only engine module that writes, and only these
  * names in that directory (scripts/check.sh).
  */
-type Name = "token" | "secret" | `secret.${number}.tmp` | "vapid.json" | "subscriptions.json";
+type Name = "token" | "secret" | "vapid.json" | "subscriptions.json";
 
 /** Constant-time comparison; nothing on disk = nothing is authorized. */
 function same(given: string | undefined, want: string | undefined): boolean {
@@ -72,9 +72,12 @@ export class State {
   rotateSecret(): string {
     const t = randomBytes(32).toString("hex");
     // temp file + rename: a hook or secret() reading at the same moment sees the old or the new secret, never an empty file
-    const tmp = `secret.${process.pid}.tmp` as const;
-    this.write(tmp, t + "\n");
-    renameSync(join(this.dir, tmp), join(this.dir, "secret"));
+    // A leftover temp file (crash, reused pid) may have wider permissions: remove it and create a fresh one exclusively.
+    const tmp = join(this.dir, `secret.${process.pid}.tmp`);
+    mkdirSync(this.dir, { recursive: true, mode: 0o700 });
+    rmSync(tmp, { force: true });
+    writeFileSync(tmp, t + "\n", { mode: 0o600, flag: "wx" });
+    renameSync(tmp, join(this.dir, "secret"));
     return t;
   }
 

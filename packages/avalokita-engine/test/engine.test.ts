@@ -521,6 +521,16 @@ test("state: rotating the local secret makes the old one useless at once", () =>
   assert.deepEqual(readdirSync(dir), ["secret"], "written through a temp file that is renamed over the secret, none left behind");
 });
 
+test("state: rotation never reuses a leftover temp file with wider permissions", () => {
+  const dir = mkdtempSync(join(tmp, "state-"));
+  new State(dir).secret();
+  writeFileSync(join(dir, `secret.${process.pid}.tmp`), "stale\n", { mode: 0o644 });
+  const next = new State(dir).rotateSecret();
+  assert.equal(statSync(join(dir, "secret")).mode & 0o777, 0o600);
+  assert.equal(readFileSync(join(dir, "secret"), "utf8").trim(), next);
+  assert.deepEqual(readdirSync(dir), ["secret"]);
+});
+
 test("state: rotating the token signs every device out of push", () => {
   const st = new State(mkdtempSync(join(tmp, "state-")));
   // a lost phone must stop getting lock-screen pushes once you rotate
