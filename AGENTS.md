@@ -1,3 +1,5 @@
+Frozen until the owner's launch decision (earliest 17 Nov 2026): personal tool; only B2, crash and honesty fixes. Call source: `~/Everything/dev/products/decision.md` (November bet, default A).
+
 # AGENTS.md
 
 - Run `scripts/check.sh` before finishing; `--fast` skips the engine tests and the UI build. Node >= 23.6 (the engine runs TypeScript through Node's type stripping).
