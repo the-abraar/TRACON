@@ -1,5 +1,5 @@
 import { randomBytes, timingSafeEqual } from "node:crypto";
-import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { connect } from "node:net";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -10,7 +10,7 @@ import webpush, { type PushSubscription } from "web-push";
  * keys, the subscribed devices and the hooks' socket (engine.sock). The only engine module that writes, and only these
  * names in that directory (scripts/check.sh).
  */
-type Name = "token" | "secret" | "vapid.json" | "subscriptions.json";
+type Name = "token" | "secret" | `secret.${number}.tmp` | "vapid.json" | "subscriptions.json";
 
 /** Constant-time comparison; nothing on disk = nothing is authorized. */
 function same(given: string | undefined, want: string | undefined): boolean {
@@ -71,7 +71,10 @@ export class State {
   /** A new secret; the old one stops working at once. Open Flight Deck pages need a reload. */
   rotateSecret(): string {
     const t = randomBytes(32).toString("hex");
-    this.write("secret", t + "\n");
+    // temp file + rename: a hook or secret() reading at the same moment sees the old or the new secret, never an empty file
+    const tmp = `secret.${process.pid}.tmp` as const;
+    this.write(tmp, t + "\n");
+    renameSync(join(this.dir, tmp), join(this.dir, "secret"));
     return t;
   }
 

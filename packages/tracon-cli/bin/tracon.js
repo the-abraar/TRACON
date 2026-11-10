@@ -58,12 +58,15 @@ function tailscale(...args) {
 // A stray error must not take the engine down with held prompts: log it and keep serving (held prompts time out on their own).
 for (const ev of ["uncaughtException", "unhandledRejection"]) process.on(ev, (e) => console.error(`tracon: ${ev}:`, e));
 
-if (cmd === "hook" && ["pre-tool-use", "permission-request"].includes(flags[0])) {
+if (cmd === "hook") {
   // Run by Claude Code for each prompt the hooks match. Whatever goes wrong, print nothing and exit 0: Claude Code then
   // asks at the terminal exactly as it would without TRACON.
   let out = "";
   try {
+    // an event this build doesn't know (settings written by another version) must fail open too: exit 2 would block the tool
+    if (!["pre-tool-use", "permission-request"].includes(flags[0])) throw new Error(`unknown hook event ${flags[0]}`);
     let body = "";
+    process.stdin.setEncoding("utf8"); // a multi-byte character split across chunks must not turn into U+FFFD
     for await (const c of process.stdin) body += c;
     const st = await state();
     const secret = readFileSync(join(st.dir, "secret"), "utf8").trim();

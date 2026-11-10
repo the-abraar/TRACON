@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { appendFileSync, copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { appendFileSync, copyFileSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { createServer, get, request } from "node:http";
 import { tmpdir } from "node:os";
@@ -102,6 +102,9 @@ test("promptSummary: one readable line for the message that opened a turn", () =
   assert.equal(promptSummary("<bash-stdout>lots of output</bash-stdout><bash-stderr></bash-stderr>"), "command output");
   assert.equal(promptSummary("use password: hunter2 here"), "use password: *** here");
   assert.equal(promptSummary("x".repeat(500)).length, 160);
+  // the 8192-char cap cuts the closing quote; tag removal then pulls the value into the 160 kept chars
+  assert.ok(!promptSummary("<x>".repeat(2724) + '"token":"abcdefghijk"').includes("abcdefghijk"));
+  assert.equal(promptSummary('"token":"abc def"'), '"token":"***"');
 });
 
 test("promptSummary stays fast on a huge prompt full of unclosed '<'", () => {
@@ -515,6 +518,7 @@ test("state: rotating the local secret makes the old one useless at once", () =>
   assert.equal(statSync(join(dir, "secret")).mode & 0o777, 0o600);
   assert.equal(st.secretOk(old), false);
   assert.ok(new State(dir).secretOk(next), "a running engine reads the file on every check");
+  assert.deepEqual(readdirSync(dir), ["secret"], "written through a temp file that is renamed over the secret, none left behind");
 });
 
 test("state: rotating the token signs every device out of push", () => {
@@ -630,6 +634,11 @@ test("redact masks quoted values with spaces, passwd, and Bearer tokens", () => 
   assert.equal(promptSummary(`{"password": "my pass, word", "n": 1}`), `{"password": "***", "n": 1}`);
   assert.equal(promptSummary("curl -H 'Authorization: Bearer abc.def-1' x"), "curl -H 'Authorization: *** ***' x");
   assert.equal(promptSummary("passwd=x"), "passwd=***");
+});
+
+test("redact does not stop at an escaped quote inside a secret, closed or cut off", () => {
+  assert.equal(promptSummary(String.raw`password="ab\"hunter2" next`), `password="***" next`);
+  assert.ok(!promptSummary(String.raw`token="ab\"hunter2`).includes("hunter2"));
 });
 
 /** POST over the engine's Unix socket, the way `tracon hook` sends; resolves once the reply has ended. */
