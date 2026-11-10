@@ -20,6 +20,6 @@ public enum Format {
     }
 
     public static func squawk(_ tier: String) -> String {
-        ["pro_20": "SQ-20", "team_100": "SQ-100", "api_usage": "SQ-API", "gemini": "SQ-AGY"][tier] ?? tier
+        ["pro_20": "SQ-20", "team_100": "SQ-100", "max": "SQ-MAX", "api_usage": "SQ-API", "gemini": "SQ-AGY"][tier] ?? tier
     }
 }

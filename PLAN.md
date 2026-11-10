@@ -65,7 +65,7 @@ export interface FlightPacket {
   id: string;                      // Unique event UUID
   timestamp: string;               // ISO 8601
   flightCallsign: string;          // e.g. "CL-A", "CL-B", "AGY-01"
-  accountTier: "pro_20" | "team_100" | "api_usage" | "gemini";
+  accountTier: "pro_20" | "team_100" | "max" | "api_usage" | "gemini";
   runtime: "claude-code" | "antigravity" | "opencode";
   pid?: number;                    // Terminal process ID
   cwd: string;                     // Working repository path

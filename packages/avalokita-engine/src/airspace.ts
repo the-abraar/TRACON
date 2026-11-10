@@ -13,7 +13,7 @@ import type { Account, AccountTier, FlightPacket, ParsedEvent, TraceNode } from 
 /** JSON with object keys sorted, so equal inputs compare equal whatever their key order. */
 const canon = (v: unknown) => JSON.stringify(v, (_k, x) => (x && typeof x === "object" && !Array.isArray(x) ? Object.fromEntries(Object.entries(x).sort(([a], [b]) => (a < b ? -1 : 1))) : x));
 
-const TIERS = new Set<AccountTier>(["pro_20", "team_100", "api_usage", "gemini"]);
+export const TIERS = new Set<AccountTier>(["pro_20", "team_100", "max", "api_usage", "gemini"]);
 
 /** TRACON_TIERS="BIZ=team_100,WORK=api_usage" maps a profile suffix to its plan; "" is ~/.claude. Unlisted profiles are pro_20. */
 export function parseTiers(spec = ""): Map<string, AccountTier> {

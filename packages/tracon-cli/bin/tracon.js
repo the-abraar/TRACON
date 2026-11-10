@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// tracon [tui] | start [--no-open] | status | away auto|on|off | pair [--rotate] | hooks install|uninstall | secret rotate | service install|uninstall|status [--dry-run]
+// tracon [tui] | start [--no-open] | status | doctor | away auto|on|off | pair [--rotate] | hooks install|uninstall | secret rotate | service install|uninstall|status [--dry-run]
 // (and `tracon hook pre-tool-use|permission-request`, which the installed Claude Code hooks run)
 // (needs Node >= 23.6 unless you use the compiled binary: the engine is TypeScript run by Node's type stripping)
 import { execFileSync, spawn } from "node:child_process";
@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 import { applyHooks, hookCommand, postSocket, sendHook } from "../src/hooks.js";
 import { alertLines, flightRow, HEAD, heldLines, row, summary } from "../src/view.js";
 
-const USAGE = "usage: tracon [tui] | start [--no-open] | status | away auto|on|off | pair [--rotate] | hooks install|uninstall | secret rotate | service install|uninstall|status [--dry-run]";
+const USAGE = "usage: tracon [tui] | start [--no-open] | status | doctor | away auto|on|off | pair [--rotate] | hooks install|uninstall | secret rotate | service install|uninstall|status [--dry-run]";
 const [cmd = "tui", ...flags] = process.argv.slice(2);
 const port = Number(process.env.TRACON_PORT ?? 4040);
 const remotePort = Number(process.env.TRACON_REMOTE_PORT ?? 4041);
@@ -94,6 +94,18 @@ if (cmd === "hook") {
   console.log(row(...HEAD));
   for (const f of flights) console.log(flightRow(f));
   for (const line of [...alertLines(flights), ...heldLines(decisions)]) console.log(line);
+} else if (cmd === "doctor") {
+  const { doctor } = await import("../src/doctor.js");
+  const run = (bin, ...args) => {
+    try {
+      return execFileSync(bin, args, { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+    } catch {
+      return undefined;
+    }
+  };
+  const lines = await doctor({ home: homedir(), env: process.env, uid: process.getuid(), run, tailscale, here: uiFiles ? undefined : fileURLToPath(import.meta.url) });
+  for (const l of lines) console.log(l);
+  process.exitCode = lines.some((l) => l.startsWith("FAIL")) ? 1 : 0;
 } else if (cmd === "away" && ["auto", "on", "off"].includes(flags[0])) {
   // over the engine's socket, never TCP: whoever holds the port must not get the secret
   const st = await state();
