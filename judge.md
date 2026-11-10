@@ -188,3 +188,9 @@ No new commits since f8c244d (the Host-header and bad-percent-encoding fixes), s
 - `SECURITY.md` says how to report a vulnerability privately and states the same-user trust limit. The README download section points browser users to Homebrew and checksums instead of removing the quarantine flag.
 - The dated product critique under `DOCS/` is removed from the repo; critiques live outside audited repos.
 - **Still open:** the binaries are not signed or notarized by Apple; the first release with `SHA256SUMS` and provenance is the next one.
+
+## Update (2026-11-10, agent round: demo home and hero clip)
+
+- **`scripts/demo-home.mjs <dir>`** writes a made-up HOME: 5 Claude profiles (`~/.claude`, `-acme`, `-demo`, `-oss`, `-team`), 11 sessions in `/Users/demo/{acme/api,demo/web,oss/cli}` (one with three subagents), an Antigravity conversation and usage mirrors. With `--hero <out>` it starts a scratch engine on it (random ports, temp state dir, no `CLAUDE_CONFIG_DIR`), turns away mode on, holds a real `AskUserQuestion` through `tracon hook`, drives headless Chrome over CDP (1440×900, dark) and writes `hero.mp4` and `hero.gif` with ffmpeg.
+- **`docs/hero.mp4` (0.38 MB) and `docs/hero.gif` (0.60 MB)**, 26 s: live cards update, the question turns a card amber and appears under HELD DECISIONS, it is answered in the deck (`tracon hook` printed the `updatedInput` with "Postgres"), then the subagent session's DAG opens.
+- Checks: the privacy grep (owner's username, client and private project names, the workspace path) over the generated HOME = 0 before capture, and over the deck's rendered text at the end = 0. The 13 slide screenshots were already re-shot on a made-up home on 2026-11-09 and are unchanged; the clip is not embedded in the README or slides yet (launch work).
